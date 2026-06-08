@@ -223,8 +223,8 @@ function setRuntimeDefaultModel(model) {
   runtimeDefaultModel = model || null;
 }
 
-// 模型解析优先级：Runtime 强制 > env DEFAULT_MODEL > env MODEL_MAP > 内置映射 > 透传
-// 原因：管理员可通过 Web UI 最灵活，env 变量作为兜底，内置映射覆盖常用模型
+// 模型解析优先级：Runtime 强制 > env DEFAULT_MODEL > qwen3.7-plus
+// 原因：OpenCode 不支持 GPT 模型，默认使用 qwen3.7-plus
 function resolveModel(modelName) {
   // 1. Runtime 强制模型（Web UI 设置，优先级最高）
   if (runtimeDefaultModel) {
@@ -236,25 +236,8 @@ function resolveModel(modelName) {
     return process.env.DEFAULT_MODEL.replace(/^opencode-go\//, '');
   }
 
-  // 3. 环境变量 MODEL_MAP（格式 from1:to1,from2:to2）
-  const modelMapEnv = process.env.MODEL_MAP || '';
-  if (modelMapEnv) {
-    const pairs = modelMapEnv.split(',');
-    for (const pair of pairs) {
-      const [from, to] = pair.split(':');
-      if (from?.trim() && to?.trim() && modelName === from.trim()) {
-        return to.trim().replace(/^opencode-go\//, '');
-      }
-    }
-  }
-
-  // 4. 内置映射表
-  if (DEFAULT_MODEL_MAP[modelName]) {
-    return DEFAULT_MODEL_MAP[modelName];
-  }
-
-  // 5. 透传（去除前缀）
-  return modelName.replace(/^opencode-go\//, '');
+  // 3. 默认使用 qwen3.7-plus（OpenCode 不支持 GPT 模型）
+  return 'qwen3.7-plus';
 }
 
 function buildUpstreamUrl(base, path) {

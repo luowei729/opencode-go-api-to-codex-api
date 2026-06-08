@@ -487,6 +487,7 @@ export function isAnthropicModel(modelName) {
  * 解析模型名称
  * 修复：增加 runtimeDefault 和 runtimeModelMap 参数覆盖
  * 原因：通过 UI 设置的强制模型和自定义映射必须优先于环境变量和内置映射
+ * 默认使用 qwen3.7-plus（OpenCode 不支持 GPT 模型）
  */
 export function resolveModel(modelName, env, runtimeDefault, runtimeModelMap) {
   // 1. 运行时强制模型（Web UI 设置，优先级最高）
@@ -496,28 +497,8 @@ export function resolveModel(modelName, env, runtimeDefault, runtimeModelMap) {
   const defaultModel = env.DEFAULT_MODEL;
   if (defaultModel) return defaultModel.replace(/^opencode-go\//, '');
 
-  // 3. 运行时模型映射（从 D1 model_map 表加载，优先于环境变量映射）
-  if (runtimeModelMap && runtimeModelMap[modelName]) {
-    return runtimeModelMap[modelName].replace(/^opencode-go\//, '');
-  }
-
-  // 4. 环境变量 MODEL_MAP
-  const modelMapEnv = env.MODEL_MAP || '';
-  if (modelMapEnv) {
-    const pairs = modelMapEnv.split(',');
-    for (const pair of pairs) {
-      const [from, to] = pair.split(':');
-      if (from?.trim() && to?.trim() && modelName === from.trim()) {
-        return to.trim().replace(/^opencode-go\//, '');
-      }
-    }
-  }
-
-  // 5. 内置映射表
-  if (DEFAULT_MODEL_MAP[modelName]) return DEFAULT_MODEL_MAP[modelName];
-
-  // 6. 透传（去除前缀）
-  return modelName.replace(/^opencode-go\//, '');
+  // 3. 默认使用 qwen3.7-plus（OpenCode 不支持 GPT 模型）
+  return 'qwen3.7-plus';
 }
 
 export function buildUpstreamUrl(base, path) {
