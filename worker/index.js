@@ -219,9 +219,18 @@ async function handleSetDefaultModel(request, env) {
 
 async function handleGetUpstreamTokens(env) {
   await ensureDb(env);
-  const tokens = await getAllUpstreamTokens(env.DB);
-  const masked = tokens.map(t => ({ ...t, token: t.token.slice(0, 8) + '****' }));
-  return jsonResponse({ tokens: masked });
+  try {
+    const tokens = await getAllUpstreamTokens(env.DB);
+    // 安全：脱敏处理，只显示 token 前 8 位
+    const masked = (tokens || []).map(t => ({
+      ...t,
+      token: t.token ? t.token.slice(0, 8) + '****' : '****',
+    }));
+    return jsonResponse({ tokens: masked });
+  } catch (e) {
+    console.error('Get upstream tokens error:', e.message);
+    return jsonResponse({ error: { message: '获取上游 Token 列表失败: ' + e.message } }, 500);
+  }
 }
 
 async function handleCreateUpstreamToken(request, env) {
@@ -261,10 +270,18 @@ async function handleHealthCheck(env) {
 
 async function handleGetLocalTokens(env) {
   await ensureDb(env);
-  const tokens = await getAllLocalTokens(env.DB);
-  // 安全：脱敏处理，只显示 token 前 10 位
-  const masked = tokens.map(t => ({ ...t, token: t.token.slice(0, 10) + '****' }));
-  return jsonResponse({ tokens: masked });
+  try {
+    const tokens = await getAllLocalTokens(env.DB);
+    // 安全：脱敏处理，只显示 token 前 10 位
+    const masked = (tokens || []).map(t => ({
+      ...t,
+      token: t.token ? t.token.slice(0, 10) + '****' : '****',
+    }));
+    return jsonResponse({ tokens: masked });
+  } catch (e) {
+    console.error('Get local tokens error:', e.message);
+    return jsonResponse({ error: { message: '获取本地 Token 列表失败: ' + e.message } }, 500);
+  }
 }
 
 async function handleCreateLocalToken(request, env) {
@@ -302,19 +319,24 @@ async function handleDeleteLocalToken(env, id) {
 
 async function handleStatsOverview(env) {
   await ensureDb(env);
-  const localTokens = await getAllLocalTokens(env.DB);
-  const upstreamTokens = await getAllUpstreamTokens(env.DB);
-  const totalRequests = localTokens.reduce((sum, t) => sum + t.total_requests, 0);
-  const totalSuccess = localTokens.reduce((sum, t) => sum + t.success_count, 0);
-  const totalFail = localTokens.reduce((sum, t) => sum + t.fail_count, 0);
-  const totalInputTokens = localTokens.reduce((sum, t) => sum + t.total_input_tokens, 0);
-  const totalOutputTokens = localTokens.reduce((sum, t) => sum + t.total_output_tokens, 0);
-  return jsonResponse({
-    local: { total: localTokens.length, enabled: localTokens.filter(t => t.enabled).length, disabled: localTokens.filter(t => !t.enabled).length },
-    requests: { total: totalRequests, success: totalSuccess, fail: totalFail },
-    tokens: { input: totalInputTokens, output: totalOutputTokens },
-    upstream: { total: upstreamTokens.length, enabled: upstreamTokens.filter(t => t.enabled).length, disabled: upstreamTokens.filter(t => !t.enabled).length },
-  });
+  try {
+    const localTokens = await getAllLocalTokens(env.DB) || [];
+    const upstreamTokens = await getAllUpstreamTokens(env.DB) || [];
+    const totalRequests = localTokens.reduce((sum, t) => sum + (t.total_requests || 0), 0);
+    const totalSuccess = localTokens.reduce((sum, t) => sum + (t.success_count || 0), 0);
+    const totalFail = localTokens.reduce((sum, t) => sum + (t.fail_count || 0), 0);
+    const totalInputTokens = localTokens.reduce((sum, t) => sum + (t.total_input_tokens || 0), 0);
+    const totalOutputTokens = localTokens.reduce((sum, t) => sum + (t.total_output_tokens || 0), 0);
+    return jsonResponse({
+      local: { total: localTokens.length, enabled: localTokens.filter(t => t.enabled).length, disabled: localTokens.filter(t => !t.enabled).length },
+      requests: { total: totalRequests, success: totalSuccess, fail: totalFail },
+      tokens: { input: totalInputTokens, output: totalOutputTokens },
+      upstream: { total: upstreamTokens.length, enabled: upstreamTokens.filter(t => t.enabled).length, disabled: upstreamTokens.filter(t => !t.enabled).length },
+    });
+  } catch (e) {
+    console.error('Stats overview error:', e.message);
+    return jsonResponse({ error: { message: '获取统计概览失败: ' + e.message } }, 500);
+  }
 }
 
 // ============================
