@@ -1057,7 +1057,7 @@ export default {
         const parsedApiFormat = apiFormat || defaults.apiFormat;
         
         await env.DB.prepare(
-          'INSERT OR REPLACE INTO model_meta (model_id, vendor, context_window, max_output_tokens, source, supports_vision, supports_tools, pricing_input, pricing_output, api_format, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+8 hour'))'
+          `INSERT OR REPLACE INTO model_meta (model_id, vendor, context_window, max_output_tokens, source, supports_vision, supports_tools, pricing_input, pricing_output, api_format, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+8 hour'))`
         ).bind(
           modelId,
           vendor || 'Unknown',
@@ -1130,7 +1130,7 @@ export default {
           const existing = await env.DB.prepare('SELECT model_id FROM model_meta WHERE model_id = ?').bind(m.id).first();
           if (!existing) {
             await env.DB.prepare(
-              'INSERT INTO model_meta (model_id, vendor, context_window, max_output_tokens, source, supports_vision, supports_tools, pricing_input, pricing_output, api_format, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+8 hour'))'
+              `INSERT INTO model_meta (model_id, vendor, context_window, max_output_tokens, source, supports_vision, supports_tools, pricing_input, pricing_output, api_format, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+8 hour'))`
             ).bind(m.id, 'Unknown', 250000, 64000, 'Default (未配置)', 0, 1, 0, 0, 'openai').run();
             created++;
           }
