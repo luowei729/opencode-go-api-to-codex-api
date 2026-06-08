@@ -279,6 +279,35 @@ Codex CLI / OpenAI SDK
 **架构变更：**
 - Docker 版本已停止维护，后续仅保留 Cloudflare Workers 版本
 
+### 2026-06-08 15:38 - 支持 Kilo Code 上下文窗口显示
+
+**新增功能：**
+- **Kilo Code 兼容**：`/v1/models` API 现在返回 `limit.context` 和 `limit.output` 字段
+- Kilo Code 使用这些字段来显示上下文进度条和管理上下文窗口
+- 保留原有 `context_window` 和 `max_output_tokens` 字段以兼容其他客户端
+
+**Kilo Code 配置示例：**
+```json
+{
+  "provider": {
+    "opencode-go": {
+      "name": "OpenCode Go Proxy",
+      "models": {
+        "deepseek-v4-flash": {
+          "name": "DeepSeek V4 Flash",
+          "limit": { "context": 1000000, "output": 384000 }
+        }
+      },
+      "options": {
+        "baseURL": "https://openaiapi.lkz.pub/v1",
+        "apiKey": "your-local-token"
+      }
+    }
+  },
+  "model": "opencode-go/deepseek-v4-flash"
+}
+```
+
 ### 2026-06-08 15:05 - 统一系统时间为北京时间
 
 **时间统一：**
