@@ -277,28 +277,27 @@ export async function updateLocalTokenUsage(db, id, inputTokens, outputTokens) {
  */
 export async function addLog(db, ctx, entry) {
   if (!db) return;
-  ctx.waitUntil((async () => {
-    try {
-      // 如果是旧格式（没有 level/type），自动补充
-      const level = entry.level || (entry.status >= 400 ? 'error' : 'info');
-      const type = entry.type || 'request';
-      const extra = entry.extra ? JSON.stringify(entry.extra) : null;
-      
-      await db.prepare(
-        'INSERT INTO logs (level, type, message, method, path, model, resolved_model, api, stream, status, local_token_id, upstream_token_id, duration_ms, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(
-        level, type, entry.message || '',
-        entry.method, entry.path, entry.model, entry.resolvedModel,
-        entry.api, entry.stream ? 1 : 0, entry.status,
-        entry.localTokenId || null, entry.upstreamTokenId || null, entry.durationMs || null,
-        extra
-      ).run();
-      // 保留最近 500 条日志
-      await db.exec('DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT 500)');
-    } catch (e) {
-      console.error('DB write error:', e.message);
-    }
-  })());
+  // 直接写入日志，不使用 ctx.waitUntil 以确保日志一定被写入
+  try {
+    // 如果是旧格式（没有 level/type），自动补充
+    const level = entry.level || (entry.status >= 400 ? 'error' : 'info');
+    const type = entry.type || 'request';
+    const extra = entry.extra ? JSON.stringify(entry.extra) : null;
+    
+    await db.prepare(
+      'INSERT INTO logs (level, type, message, method, path, model, resolved_model, api, stream, status, local_token_id, upstream_token_id, duration_ms, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      level, type, entry.message || '',
+      entry.method, entry.path, entry.model, entry.resolvedModel,
+      entry.api, entry.stream ? 1 : 0, entry.status,
+      entry.localTokenId || null, entry.upstreamTokenId || null, entry.durationMs || null,
+      extra
+    ).run();
+    // 保留最近 500 条日志
+    await db.exec('DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT 500)');
+  } catch (e) {
+    console.error('DB write error:', e.message);
+  }
 }
 
 /**
