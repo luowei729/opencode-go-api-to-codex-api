@@ -61,8 +61,6 @@ let modelMapLoaded = false;
 let runtimeUpstreamUrl = null;
 let settingsLoaded = false;
 const DEFAULT_UPSTREAM = 'https://opencode.ai/zen/go';
-let runtimePassword = null;
-let passwordLoaded = false;
 // 默认密码：仅当 D1 中未设置密码时使用
 // 安全提示：应在首次部署后立即通过 Web UI 更改密码，避免使用默认密码
 const DEFAULT_PASSWORD = 'abcd.1234';
@@ -130,24 +128,25 @@ async function loadTokenLimitsFromDb(env) {
   } catch (e) { console.error('Load token limits error:', e.message); }
 }
 
-async function loadPasswordFromDb(env) {
-  if (!env.DB || passwordLoaded) return;
+// 每次请求都从 D1 读取密码，确保修改后立即生效
+async function getPasswordFromDb(env) {
+  if (!env.DB) return DEFAULT_PASSWORD;
   try {
     await ensureDb(env);
     const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind('web_password').first();
-    if (row && row.value) {
-      runtimePassword = row.value;
-    } else {
-      // 未设置密码，使用默认密码并打印警告
-      runtimePassword = DEFAULT_PASSWORD;
-      console.warn('[SECURITY] 使用默认管理密码！请通过 Web UI 修改密码以确保安全。');
-    }
-    passwordLoaded = true;
-  } catch (e) { console.error('Load password error:', e.message); runtimePassword = DEFAULT_PASSWORD; }
+    return (row && row.value) ? row.value : DEFAULT_PASSWORD;
+  } catch (e) {
+    console.error('Load password error:', e.message);
+    return DEFAULT_PASSWORD;
+  }
 }
 
-function getPassword() { return runtimePassword || DEFAULT_PASSWORD; }
-function checkAuth(request) { return request.headers.get('x-admin-password') === getPassword(); }
+// 异步检查密码（每次请求调用）
+async function checkAuth(request, env) {
+  const password = await getPasswordFromDb(env);
+  return request.headers.get('x-admin-password') === password;
+}
+
 function getUpstreamUrl(env) { return runtimeUpstreamUrl || env.UPSTREAM_BASE_URL || DEFAULT_UPSTREAM; }
 
 // ============================
@@ -513,81 +512,78 @@ export default {
 
     // ---- 认证 ----
     if (path === '/api/auth' && request.method === 'POST') {
-      if (!passwordLoaded) await loadPasswordFromDb(env);
+      const currentPassword = await getPasswordFromDb(env);
       const body = await request.json();
-      if (body.password === getPassword()) return jsonResponse({ success: true, message: '登录成功' });
+      if (body.password === currentPassword) return jsonResponse({ success: true, message: '登录成功' });
       return jsonResponse({ error: { message: '密码错误' } }, 401);
     }
     if (path === '/api/auth/change' && request.method === 'POST') {
-      if (!passwordLoaded) await loadPasswordFromDb(env);
+      const currentPassword = await getPasswordFromDb(env);
       const body = await request.json();
-      if (body.oldPassword !== getPassword()) return jsonResponse({ error: { message: '当前密码错误' } }, 401);
+      if (body.oldPassword !== currentPassword) return jsonResponse({ error: { message: '当前密码错误' } }, 401);
       if (!body.newPassword || body.newPassword.length < 4) return jsonResponse({ error: { message: '新密码至少 4 位' } }, 400);
-      runtimePassword = body.newPassword;
-      if (env.DB) { try { await ensureDb(env); await env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('web_password', runtimePassword).run(); } catch (e) { console.error('Save password error:', e.message); } }
+      if (env.DB) { try { await ensureDb(env); await env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('web_password', body.newPassword).run(); } catch (e) { console.error('Save password error:', e.message); } }
       return jsonResponse({ success: true, message: '密码已修改' });
     }
 
-    if (!passwordLoaded) await loadPasswordFromDb(env);
-
     // ---- 上游 Token 池 API ----
     if (path === '/api/upstream-tokens' && request.method === 'GET') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       return handleGetUpstreamTokens(env);
     }
     if (path === '/api/upstream-tokens' && request.method === 'POST') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       return handleCreateUpstreamToken(request, env);
     }
     if (path === '/api/upstream-tokens/health-check' && request.method === 'POST') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       return handleHealthCheck(env);
     }
     const upstreamMatch = path.match(/^\/api\/upstream-tokens\/(\d+)$/);
     if (upstreamMatch) {
       const id = parseInt(upstreamMatch[1], 10);
       if (request.method === 'PUT') {
-        if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+        if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
         return handleUpdateUpstreamToken(request, env, id);
       }
       if (request.method === 'DELETE') {
-        if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+        if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
         return handleDeleteUpstreamToken(env, id);
       }
     }
 
     // ---- 本地 Token API ----
     if (path === '/api/local-tokens' && request.method === 'GET') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       return handleGetLocalTokens(env);
     }
     if (path === '/api/local-tokens' && request.method === 'POST') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       return handleCreateLocalToken(request, env);
     }
     const localMatch = path.match(/^\/api\/local-tokens\/(\d+)$/);
     if (localMatch) {
       const id = parseInt(localMatch[1], 10);
       if (request.method === 'PUT') {
-        if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+        if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
         return handleUpdateLocalToken(request, env, id);
       }
       if (request.method === 'DELETE') {
-        if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+        if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
         return handleDeleteLocalToken(env, id);
       }
     }
 
     // ---- 统计概览 ----
     if (path === '/api/stats/overview' && request.method === 'GET') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       return handleStatsOverview(env);
     }
 
     // ---- 原有 API ----
     if (path === '/api/default-model' && request.method === 'GET') return handleGetDefaultModel(env);
     if (path === '/api/default-model' && request.method === 'POST') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       return handleSetDefaultModel(request, env);
     }
 
@@ -604,7 +600,7 @@ export default {
       } catch (e) { console.error('Logs read error:', e.message); return jsonResponse({ logs: [], total: 0, error: e.message }); }
     }
     if (path === '/api/logs' && request.method === 'DELETE') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       if (env.DB) { try { await ensureDb(env); await clearAllLogs(env.DB); } catch (e) { console.error('Logs clear error:', e.message); } }
       return jsonResponse({ success: true, message: '日志已清空' });
     }
@@ -614,7 +610,7 @@ export default {
       return jsonResponse({ modelMap: { ...runtimeModelMap }, anthropicModels: [...ANTHROPIC_MODELS] });
     }
     if (path === '/api/model-map' && request.method === 'POST') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       const body = await request.json();
       const { from, to } = body;
       if (!from || !to) return jsonResponse({ error: { message: 'from 和 to 字段必填' } }, 400);
@@ -623,7 +619,7 @@ export default {
       return jsonResponse({ success: true, message: `已添加映射: ${from} → ${to}`, modelMap: { ...runtimeModelMap } });
     }
     if (path === '/api/model-map' && request.method === 'DELETE') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       const body = await request.json();
       const { from } = body;
       if (!from) return jsonResponse({ error: { message: 'from 字段必填' } }, 400);
@@ -637,7 +633,7 @@ export default {
       return jsonResponse({ current: getUpstreamUrl(env), default: DEFAULT_UPSTREAM, custom: runtimeUpstreamUrl || null });
     }
     if (path === '/api/upstream-url' && request.method === 'POST') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       const body = await request.json();
       const { url: newUrl } = body;
       if (!newUrl) return jsonResponse({ error: { message: 'url 字段必填' } }, 400);
@@ -647,7 +643,7 @@ export default {
       return jsonResponse({ success: true, message: `上游地址已设置为: ${runtimeUpstreamUrl}`, url: runtimeUpstreamUrl });
     }
     if (path === '/api/upstream-url' && request.method === 'DELETE') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       runtimeUpstreamUrl = null;
       settingsLoaded = true;
       if (env.DB) { try { await ensureDb(env); await env.DB.prepare('DELETE FROM settings WHERE key = ?').bind('upstream_url').run(); } catch (e) { console.error('Delete upstream url error:', e.message); } }
@@ -659,7 +655,7 @@ export default {
       return jsonResponse({ maxContextTokens: runtimeMaxContextTokens, maxOutputTokens: runtimeMaxOutputTokens });
     }
     if (path === '/api/token-limits' && request.method === 'POST') {
-      if (!checkAuth(request)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
       const body = await request.json();
       const { maxContextTokens, maxOutputTokens } = body;
       if (maxContextTokens !== undefined) {
