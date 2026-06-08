@@ -276,10 +276,7 @@ export async function updateLocalTokenUsage(db, id, inputTokens, outputTokens) {
  * @param {Object} [entry.extra] - 额外数据（JSON 对象）
  */
 export async function addLog(db, ctx, entry) {
-  if (!db) {
-    console.error('addLog: db is null');
-    return;
-  }
+  if (!db) return;
   // 直接写入日志，不使用 ctx.waitUntil 以确保日志一定被写入
   try {
     // 如果是旧格式（没有 level/type），自动补充
@@ -287,21 +284,19 @@ export async function addLog(db, ctx, entry) {
     const type = entry.type || 'request';
     const extra = entry.extra ? JSON.stringify(entry.extra) : null;
     
-    const stmt = db.prepare(
+    await db.prepare(
       'INSERT INTO logs (level, type, message, method, path, model, resolved_model, api, stream, status, local_token_id, upstream_token_id, duration_ms, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    );
-    const result = await stmt.bind(
+    ).bind(
       level, type, entry.message || '',
       entry.method || null, entry.path || null, entry.model || null, entry.resolvedModel || null,
       entry.api || null, entry.stream ? 1 : 0, entry.status || null,
       entry.localTokenId || null, entry.upstreamTokenId || null, entry.durationMs || null,
       extra
     ).run();
-    console.log('addLog success:', result);
     // 保留最近 500 条日志
     await db.exec('DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT 500)');
   } catch (e) {
-    console.error('DB write error:', e.message, e.stack);
+    console.error('DB write error:', e.message);
   }
 }
 
