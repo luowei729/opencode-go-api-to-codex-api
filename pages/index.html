@@ -3,107 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OpenCode Go API Proxy - 模型管理</title>
+<title>OpenCode Go API Proxy - 管理面板</title>
 <style>
+  /* ---- 基础样式 ---- */
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e1e4e8; min-height: 100vh; }
-  .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
   h1 { font-size: 24px; margin-bottom: 8px; color: #fff; }
   .subtitle { color: #8b949e; margin-bottom: 24px; font-size: 14px; }
-  .status-bar { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; }
-  .status-bar .label { color: #8b949e; font-size: 13px; }
-  .status-bar .value { color: #58a6ff; font-weight: 600; font-size: 15px; }
-  .status-bar .value.none { color: #8b949e; font-weight: 400; }
-  .btn-clear { background: #da3633; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; }
-  .btn-clear:hover { background: #f85149; }
-  .btn-clear:disabled { opacity: 0.4; cursor: not-allowed; }
-  .section-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #c9d1d9; }
-  .model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 32px; }
-  .model-card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s; position: relative; }
-  .model-card:hover { border-color: #58a6ff; background: #1c2129; }
-  .model-card.selected { border-color: #3fb950; background: #132a13; }
-  .model-card.selected::after { content: '\2713'; position: absolute; top: 10px; right: 14px; color: #3fb950; font-size: 18px; font-weight: bold; }
-  .model-name { font-size: 15px; font-weight: 600; color: #e1e4e8; margin-bottom: 6px; }
-  .model-meta { font-size: 12px; color: #8b949e; }
-  .model-meta .api-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; margin-top: 4px; }
-  .api-openai { background: #1f3a28; color: #3fb950; }
-  .api-anthropic { background: #3d2a1a; color: #d29922; }
-  .loading { text-align: center; padding: 40px; color: #8b949e; }
-  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #238636; color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
-  .toast.show { opacity: 1; }
-  .toast.error { background: #da3633; }
-  .info-box { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; font-size: 13px; color: #8b949e; line-height: 1.6; }
-  .info-box code { background: #21262d; padding: 2px 6px; border-radius: 4px; color: #79c0ff; font-size: 12px; }
-  .token-box { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; }
-  .token-box label { display: block; font-size: 13px; color: #8b949e; margin-bottom: 8px; }
-  .token-input-row { display: flex; gap: 8px; }
-  .token-input-row input { flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px 14px; color: #e1e4e8; font-size: 14px; font-family: monospace; outline: none; }
-  .token-input-row input:focus { border-color: #58a6ff; }
-  .token-input-row input::placeholder { color: #484f58; }
-  .btn-save { background: #238636; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; white-space: nowrap; }
-  .btn-save:hover { background: #2ea043; }
-  .token-status { font-size: 12px; color: #8b949e; margin-top: 6px; }
-  .token-status.ok { color: #3fb950; }
-  .logs-section { margin-top: 32px; }
-  .logs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  .logs-header .left { display: flex; align-items: center; gap: 12px; }
-  .logs-toggle { background: #21262d; color: #8b949e; border: 1px solid #30363d; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-  .logs-toggle.active { background: #1f6feb; color: #fff; border-color: #1f6feb; }
-  .btn-clear-logs { background: #21262d; color: #8b949e; border: 1px solid #30363d; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-  .btn-clear-logs:hover { color: #f85149; border-color: #f85149; }
-  .logs-container { background: #0d1117; border: 1px solid #30363d; border-radius: 12px; max-height: 400px; overflow-y: auto; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; }
-  .log-row { padding: 8px 14px; border-bottom: 1px solid #1b1f23; display: flex; gap: 10px; align-items: flex-start; }
-  .log-row:last-child { border-bottom: none; }
-  .log-row:hover { background: #161b22; }
-  .log-time { color: #484f58; white-space: nowrap; flex-shrink: 0; }
-  .log-method { font-weight: 600; flex-shrink: 0; min-width: 40px; }
-  .log-method.post { color: #3fb950; }
-  .log-method.get { color: #58a6ff; }
-  .log-path { color: #c9d1d9; flex-shrink: 0; }
-  .log-model { color: #d2a8ff; flex-shrink: 0; }
-  .log-arrow { color: #484f58; flex-shrink: 0; }
-  .log-resolved { color: #79c0ff; flex-shrink: 0; }
-  .log-tags { display: flex; gap: 4px; flex-shrink: 0; }
-  .log-tag { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 500; }
-  .log-tag.stream { background: #1f3a28; color: #3fb950; }
-  .log-tag.api { background: #21262d; color: #8b949e; }
-  .log-status { font-weight: 600; flex-shrink: 0; }
-  .log-status.ok { color: #3fb950; }
-  .log-status.err { color: #f85149; }
-  .logs-empty { padding: 24px; text-align: center; color: #484f58; }
-  .logs-count { color: #484f58; font-size: 12px; }
-  .map-section { margin-top: 32px; margin-bottom: 32px; }
-  .map-table { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 12px; overflow: hidden; }
-  .map-table th { background: #21262d; padding: 10px 14px; text-align: left; font-size: 12px; color: #8b949e; font-weight: 600; border-bottom: 1px solid #30363d; }
-  .map-table td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #1b1f23; }
-  .map-table tr:last-child td { border-bottom: none; }
-  .map-table tr:hover { background: #1c2129; }
-  .map-from { color: #d2a8ff; font-family: monospace; }
-  .map-arrow { color: #484f58; text-align: center; }
-  .map-to { color: #79c0ff; font-family: monospace; }
-  .map-type { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
-  .map-type.default { background: #21262d; color: #8b949e; }
-  .map-type.custom { background: #1f3a28; color: #3fb950; }
-  .map-btn-del { background: none; border: 1px solid #30363d; color: #8b949e; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 11px; }
-  .map-btn-del:hover { color: #f85149; border-color: #f85149; }
-  .map-btn-edit { background: none; border: 1px solid #30363d; color: #8b949e; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 11px; margin-right: 4px; }
-  .map-btn-edit:hover { color: #58a6ff; border-color: #58a6ff; }
-  .map-inline-edit { display: flex; gap: 4px; align-items: center; }
-  .map-inline-edit select { background: #0d1117; border: 1px solid #58a6ff; border-radius: 6px; padding: 4px 8px; color: #e1e4e8; font-size: 12px; font-family: monospace; outline: none; }
-  .map-inline-edit .btn-mini { padding: 4px 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 11px; }
-  .map-inline-edit .btn-ok { background: #238636; color: #fff; }
-  .map-inline-edit .btn-cancel { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
-  .map-add-row { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
-  .map-add-row input, .map-add-row select { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; color: #e1e4e8; font-size: 13px; font-family: monospace; outline: none; }
-  .map-add-row input:focus, .map-add-row select:focus { border-color: #58a6ff; }
-  .map-add-row input::placeholder { color: #484f58; }
-  .map-add-row .input-from { width: 160px; }
-  .map-add-row .input-to { flex: 1; min-width: 160px; }
-  .btn-add { background: #238636; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; white-space: nowrap; }
-  .btn-add:hover { background: #2ea043; }
-  .refresh-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px; vertical-align: middle; }
-  .refresh-indicator.active { background: #3fb950; }
-  .refresh-indicator.inactive { background: #484f58; }
+
+  /* ---- 认证弹窗 ---- */
   .auth-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 200; }
   .auth-box { background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 32px; width: 360px; }
   .auth-box h2 { font-size: 18px; color: #fff; margin-bottom: 16px; text-align: center; }
@@ -112,138 +21,322 @@
   .auth-box .btn-login { width: 100%; background: #238636; color: #fff; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 600; }
   .auth-box .btn-login:hover { background: #2ea043; }
   .auth-box .auth-error { color: #f85149; font-size: 13px; text-align: center; margin-top: 8px; min-height: 20px; }
+
+  /* ---- 顶部导航栏 ---- */
   .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .header-bar .right { display: flex; gap: 8px; align-items: center; }
-  .btn-small { background: #21262d; color: #8b949e; border: 1px solid #30363d; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-  .btn-small:hover { color: #e1e4e8; border-color: #8b949e; }
-  .pw-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
-  .pw-modal { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; width: 340px; }
-  .pw-modal h3 { font-size: 16px; color: #fff; margin-bottom: 16px; }
-  .pw-modal label { display: block; font-size: 13px; color: #8b949e; margin-bottom: 4px; margin-top: 10px; }
-  .pw-modal input { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; color: #e1e4e8; font-size: 14px; outline: none; }
-  .pw-modal input:focus { border-color: #58a6ff; }
-  .pw-modal .btn-row { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+
+  /* ---- Tab 切换 ---- */
+  .tab-bar { display: flex; gap: 0; border-bottom: 2px solid #30363d; margin-bottom: 24px; }
+  .tab-btn { background: none; border: none; color: #8b949e; font-size: 14px; font-weight: 500; padding: 12px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+  .tab-btn:hover { color: #c9d1d9; }
+  .tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ---- 通用组件 ---- */
+  .status-bar { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; }
+  .status-bar .label { color: #8b949e; font-size: 13px; }
+  .status-bar .value { color: #58a6ff; font-weight: 600; font-size: 15px; }
+  .status-bar .value.none { color: #8b949e; font-weight: 400; }
+  .section-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #c9d1d9; }
+  .info-box { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; font-size: 13px; color: #8b949e; line-height: 1.6; }
+  .info-box code { background: #21262d; padding: 2px 6px; border-radius: 4px; color: #79c0ff; font-size: 12px; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #238636; color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
+  .toast.show { opacity: 1; }
+  .toast.error { background: #da3633; }
+
+  /* ---- 按钮 ---- */
+  .btn { border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
+  .btn-primary { background: #238636; color: #fff; }
+  .btn-primary:hover { background: #2ea043; }
+  .btn-danger { background: #da3633; color: #fff; }
+  .btn-danger:hover { background: #f85149; }
+  .btn-secondary { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
+  .btn-secondary:hover { color: #e1e4e8; border-color: #8b949e; }
+  .btn-small { padding: 4px 12px; font-size: 12px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ---- 模型卡片 ---- */
+  .model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 32px; }
+  .model-card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s; position: relative; }
+  .model-card:hover { border-color: #58a6ff; background: #1c2129; }
+  .model-card.selected { border-color: #3fb950; background: #132a13; }
+  .model-card.selected::after { content: '\2713'; position: absolute; top: 10px; right: 14px; color: #3fb950; font-size: 18px; font-weight: bold; }
+  .model-name { font-size: 15px; font-weight: 600; color: #e1e4e8; margin-bottom: 6px; }
+  .model-meta { font-size: 12px; color: #8b949e; }
+  .api-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; margin-top: 4px; }
+  .api-openai { background: #1f3a28; color: #3fb950; }
+  .api-anthropic { background: #3d2a1a; color: #d29922; }
+
+  /* ---- 表格 ---- */
+  .data-table { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+  .data-table th { background: #21262d; padding: 10px 14px; text-align: left; font-size: 12px; color: #8b949e; font-weight: 600; border-bottom: 1px solid #30363d; }
+  .data-table td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #1b1f23; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover { background: #1c2129; }
+
+  /* ---- 表单 ---- */
+  .form-row { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+  .form-row input, .form-row select { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; color: #e1e4e8; font-size: 13px; outline: none; }
+  .form-row input:focus, .form-row select:focus { border-color: #58a6ff; }
+  .form-row input::placeholder { color: #484f58; }
+  .form-label { font-size: 12px; color: #8b949e; min-width: 60px; }
+
+  /* ---- 状态标签 ---- */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+  .badge-ok { background: #1f3a28; color: #3fb950; }
+  .badge-err { background: #3d1a1a; color: #f85149; }
+  .badge-warn { background: #3d2a1a; color: #d29922; }
+  .badge-info { background: #1a2a3d; color: #58a6ff; }
+
+  /* ---- 统计卡片 ---- */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; }
+  .stat-card .stat-label { font-size: 12px; color: #8b949e; margin-bottom: 8px; }
+  .stat-card .stat-value { font-size: 28px; font-weight: 700; color: #fff; }
+  .stat-card .stat-sub { font-size: 12px; color: #8b949e; margin-top: 4px; }
+
+  /* ---- 日志 ---- */
+  .logs-container { background: #0d1117; border: 1px solid #30363d; border-radius: 12px; max-height: 400px; overflow-y: auto; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; }
+  .log-row { padding: 8px 14px; border-bottom: 1px solid #1b1f23; display: flex; gap: 10px; align-items: flex-start; }
+  .log-row:last-child { border-bottom: none; }
+  .log-row:hover { background: #161b22; }
+  .log-time { color: #484f58; white-space: nowrap; }
+  .log-method { font-weight: 600; min-width: 40px; }
+  .log-method.post { color: #3fb950; }
+  .log-method.get { color: #58a6ff; }
+  .log-path { color: #c9d1d9; }
+  .log-model { color: #d2a8ff; }
+  .log-arrow { color: #484f58; }
+  .log-resolved { color: #79c0ff; }
+  .log-tag { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 500; }
+  .log-tag.stream { background: #1f3a28; color: #3fb950; }
+  .log-tag.api { background: #21262d; color: #8b949e; }
+  .log-status { font-weight: 600; }
+  .log-status.ok { color: #3fb950; }
+  .log-status.err { color: #f85149; }
+  .logs-empty { padding: 24px; text-align: center; color: #484f58; }
+
+  /* ---- 模态框 ---- */
+  .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
+  .modal { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; width: 500px; max-height: 80vh; overflow-y: auto; }
+  .modal h3 { font-size: 16px; color: #fff; margin-bottom: 16px; }
+  .modal label { display: block; font-size: 13px; color: #8b949e; margin-bottom: 4px; margin-top: 10px; }
+  .modal input, .modal select { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; color: #e1e4e8; font-size: 14px; outline: none; }
+  .modal input:focus { border-color: #58a6ff; }
+  .modal .btn-row { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+
+  /* ---- 进度条 ---- */
+  .weight-bar { height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; }
+  .weight-bar-fill { height: 100%; background: #58a6ff; border-radius: 3px; transition: width 0.3s; }
 </style>
 </head>
 <body>
 
-<!-- Auth overlay -->
+<!-- 认证弹窗 -->
 <div class="auth-overlay" id="authOverlay">
   <div class="auth-box">
     <h2>🔒 请输入管理密码</h2>
-    <input type="password" id="authPassword" placeholder="请输入密码" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()" />
-    <button class="btn-login" onclick="doLogin()">登录</button>
+    <input type="password" id="authPassword" placeholder="请输入 WEB_PASSWORD" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()" />
+    <button class="btn btn-primary btn-login" onclick="doLogin()">登录</button>
     <div class="auth-error" id="authError"></div>
   </div>
 </div>
 
-<!-- Main content (hidden until auth) -->
+<!-- 主内容（登录后显示） -->
 <div id="mainContent" style="display:none">
 <div class="container">
   <div class="header-bar">
     <h1>OpenCode Go API Proxy</h1>
     <div class="right">
-      <button class="btn-small" onclick="showChangePassword()">修改密码</button>
-      <button class="btn-small" onclick="doLogout()">退出登录</button>
+      <button class="btn btn-secondary btn-small" onclick="doLogout()">退出登录</button>
     </div>
   </div>
-  <p class="subtitle">选择要强制使用的模型，所有 API 请求将统一使用该模型</p>
+  <p class="subtitle">上游 Token 池负载均衡 · 本地访问 Token 管理 · 实时使用统计</p>
 
-  <div class="token-box">
-    <label>上游 API 地址（所有请求转发到此地址，留空使用默认值）</label>
-    <div class="token-input-row">
-      <input id="upstreamInput" placeholder="https://opencode.ai/zen/go" autocomplete="off" />
-      <button class="btn-save" onclick="saveUpstream()">保存</button>
-      <button class="btn-clear" onclick="resetUpstream()" id="btnResetUpstream" disabled>恢复默认</button>
+  <!-- Tab 栏 -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('models')">模型管理</button>
+    <button class="tab-btn" onclick="switchTab('upstream')">上游 Token 池</button>
+    <button class="tab-btn" onclick="switchTab('local')">本地 Token</button>
+    <button class="tab-btn" onclick="switchTab('stats')">使用统计</button>
+  </div>
+
+  <!-- ==================== Tab 1: 模型管理 ==================== -->
+  <div class="tab-panel active" id="tab-models">
+    <div class="status-bar">
+      <div>
+        <div class="label">当前强制模型</div>
+        <div class="value" id="currentModel">加载中...</div>
+      </div>
+      <button class="btn btn-danger btn-small" id="btnClear" onclick="clearModel()" disabled>取消强制</button>
     </div>
-    <div class="token-status" id="upstreamStatus"></div>
-  </div>
 
-  <div class="token-box">
-    <label>Token 限制配置（留空表示不限制，使用客户端传入的值）</label>
-    <div class="token-input-row">
-      <input id="maxContextTokensInput" type="number" placeholder="上下文窗口 (如 128000)" autocomplete="off" />
-      <input id="maxOutputTokensInput" type="number" placeholder="最大输出 (如 4096)" autocomplete="off" />
-      <button class="btn-save" onclick="saveTokenLimits()">保存</button>
+    <div class="info-box">
+      点击模型卡片即可强制所有请求使用该模型。选择后无需重启，立即生效。<br>
+      代理地址: <code>http://127.0.0.1:30001</code> &nbsp;|&nbsp;
+      兼容 OpenAI Responses API (<code>/v1/responses</code>) 和 Chat Completions API (<code>/v1/chat/completions</code>)
     </div>
-    <div class="token-status" id="tokenLimitsStatus"></div>
-  </div>
 
-  <div class="token-box">
-    <label>OpenCode Go Token（您的密钥仅存储在浏览器本地，不会上传到服务端）</label>
-    <div class="token-input-row">
-      <input type="password" id="tokenInput" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
-      <button class="btn-save" onclick="saveToken()">保存</button>
+    <div class="section-title">可用模型</div>
+    <div class="model-grid" id="modelGrid">
+      <div style="padding:40px;text-align:center;color:#8b949e">加载模型列表中...</div>
     </div>
-    <div class="token-status" id="tokenStatus"></div>
   </div>
 
-  <div class="status-bar">
-    <div>
-      <div class="label">当前强制模型</div>
-      <div class="value" id="currentModel">加载中...</div>
+  <!-- ==================== Tab 2: 上游 Token 池 ==================== -->
+  <div class="tab-panel" id="tab-upstream">
+    <div class="info-box">
+      配置多个上游 OpenCode Go API Token，代理会按 <code>usage/weight</code> 比值自动负载均衡。<br>
+      每个 Token 可设置独立的上游服务器地址（留空使用全局默认）。失败超过阈值自动禁用，定时探测自动恢复。
     </div>
-    <button class="btn-clear" id="btnClear" onclick="clearModel()" disabled>取消强制</button>
-  </div>
 
-  <div class="info-box">
-    点击模型卡片即可强制所有请求使用该模型。选择后无需重启容器，立即生效。<br>
-    代理地址: <code>http://127.0.0.1:3000</code> &nbsp;|&nbsp;
-    兼容 OpenAI Responses API (<code>/v1/responses</code>) 和 Chat Completions API (<code>/v1/chat/completions</code>)
-  </div>
-
-  <div class="section-title">可用模型 <span class="refresh-indicator active" id="refreshDot" title="自动刷新中"></span></div>
-  <div class="model-grid" id="modelGrid">
-    <div class="loading">加载模型列表中...</div>
-  </div>
-
-  <div class="map-section">
-    <div class="section-title">模型映射配置</div>
-    <div class="info-box" style="margin-bottom: 12px;">
-      当客户端请求左侧模型时，自动转换为右侧实际模型。所有映射均可编辑和删除。<br>
-      例: 客户端请求 <code>gpt-4o</code> → 实际使用 <code>kimi-k2.6</code>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="section-title" style="margin-bottom:0">上游 Token 列表</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-small" onclick="checkHealth()">手动健康检查</button>
+        <button class="btn btn-primary btn-small" onclick="showAddUpstream()">+ 添加 Token</button>
+      </div>
     </div>
-    <table class="map-table">
-      <thead><tr><th>请求模型</th><th style="width:30px"></th><th>实际模型</th><th style="width:120px">操作</th></tr></thead>
-      <tbody id="mapTableBody">
-        <tr><td colspan="5" style="text-align:center;color:#484f58;padding:20px">加载中...</td></tr>
+
+    <table class="data-table" id="upstreamTable">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>名称</th>
+          <th>Token</th>
+          <th>权重</th>
+          <th>上游地址</th>
+          <th>使用量</th>
+          <th>失败</th>
+          <th>优先级</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="upstreamBody">
+        <tr><td colspan="10" style="text-align:center;color:#484f58;padding:20px">加载中...</td></tr>
       </tbody>
     </table>
-    <div class="map-add-row">
-      <input class="input-from" id="mapFrom" placeholder="请求模型 (如 gpt-4o)" />
-      <span style="color:#484f58">→</span>
-      <select class="input-to" id="mapTo"><option value="">选择目标模型...</option></select>
-      <button class="btn-add" onclick="addMapping()">添加映射</button>
-    </div>
   </div>
 
-  <div class="logs-section">
-    <div class="logs-header">
-      <div class="left">
-        <div class="section-title" style="margin-bottom:0">请求日志</div>
-        <span class="logs-count" id="logsCount"></span>
-        <button class="logs-toggle active" id="btnAutoScroll" onclick="toggleAutoScroll()">自动滚动</button>
+  <!-- ==================== Tab 3: 本地 Token ==================== -->
+  <div class="tab-panel" id="tab-local">
+    <div class="info-box">
+      生成本地访问 Token，客户端使用这些 Token 调用代理。代理自动从上游 Token 池选择可用的上游 Token 转发请求。<br>
+      每个本地 Token 的使用量会实时统计，方便监控和计费。
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="section-title" style="margin-bottom:0">本地 Token 列表</div>
+      <button class="btn btn-primary btn-small" onclick="showAddLocal()">+ 生成 Token</button>
+    </div>
+
+    <table class="data-table" id="localTable">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>名称</th>
+          <th>Token</th>
+          <th>请求数</th>
+          <th>成功</th>
+          <th>失败</th>
+          <th>输入 Token</th>
+          <th>输出 Token</th>
+          <th>最后使用</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="localBody">
+        <tr><td colspan="11" style="text-align:center;color:#484f58;padding:20px">加载中...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ==================== Tab 4: 使用统计 ==================== -->
+  <div class="tab-panel" id="tab-stats">
+    <div class="section-title">概览</div>
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-card"><div class="stat-label">总请求数</div><div class="stat-value" id="statTotalReq">-</div></div>
+      <div class="stat-card"><div class="stat-label">成功请求</div><div class="stat-value" id="statSuccess" style="color:#3fb950">-</div></div>
+      <div class="stat-card"><div class="stat-label">失败请求</div><div class="stat-value" id="statFail" style="color:#f85149">-</div></div>
+      <div class="stat-card"><div class="stat-label">累计输入 Token</div><div class="stat-value" id="statInput">-</div></div>
+      <div class="stat-card"><div class="stat-label">累计输出 Token</div><div class="stat-value" id="statOutput">-</div></div>
+      <div class="stat-card"><div class="stat-label">上游 Token</div><div class="stat-value" id="statUpstream">-</div><div class="stat-sub" id="statUpstreamSub"></div></div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="section-title" style="margin-bottom:0">请求日志</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="color:#484f58;font-size:12px" id="logsCount"></span>
+        <button class="btn btn-secondary btn-small" onclick="clearLogs()">清空日志</button>
       </div>
-      <button class="btn-clear-logs" onclick="clearLogs()">清空日志</button>
     </div>
     <div class="logs-container" id="logsContainer">
       <div class="logs-empty">暂无请求日志</div>
     </div>
   </div>
+
 </div>
 </div>
 
-<!-- Change password modal -->
-<div class="pw-modal-overlay" id="pwModal" style="display:none">
-  <div class="pw-modal">
-    <h3>修改密码</h3>
-    <label>当前密码</label>
-    <input type="password" id="pwOld" autocomplete="off" />
-    <label>新密码（至少 4 位）</label>
-    <input type="password" id="pwNew" autocomplete="off" />
+<!-- 添加/编辑上游 Token 模态框 -->
+<div class="modal-overlay" id="upstreamModal" style="display:none">
+  <div class="modal">
+    <h3 id="upstreamModalTitle">添加上游 Token</h3>
+    <input type="hidden" id="upstreamEditId" />
+    <label>Token 值 *</label>
+    <input type="text" id="upstreamToken" placeholder="sk-xxxxxxxxxxxxxxxx" />
+    <label>名称 *</label>
+    <input type="text" id="upstreamName" placeholder="如：主账号、备用账号" />
+    <label>权重（正整数，越大承载越多请求）</label>
+    <input type="number" id="upstreamWeight" value="1" min="1" />
+    <label>独立上游地址（留空使用全局默认）</label>
+    <input type="text" id="upstreamUrl" placeholder="https://opencode.ai/zen/go" />
+    <label>最大失败次数（超过自动禁用）</label>
+    <input type="number" id="upstreamMaxFail" value="3" min="1" />
+    <label>检查间隔（分钟，禁用后多久检查一次）</label>
+    <input type="number" id="upstreamCheckInterval" value="5" min="1" />
+    <label>优先级（数字越小越优先，用于恢复排序）</label>
+    <input type="number" id="upstreamPriority" value="5" min="1" />
+    <label>启用状态</label>
+    <select id="upstreamEnabled">
+      <option value="1">启用</option>
+      <option value="0">禁用</option>
+    </select>
     <div class="btn-row">
-      <button class="btn-small" onclick="hideChangePassword()">取消</button>
-      <button class="btn-save" onclick="doChangePassword()">确认修改</button>
+      <button class="btn btn-secondary" onclick="hideUpstreamModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveUpstream()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 生成本地 Token 模态框 -->
+<div class="modal-overlay" id="localModal" style="display:none">
+  <div class="modal">
+    <h3>生成本地访问 Token</h3>
+    <label>名称 *</label>
+    <input type="text" id="localName" placeholder="如：张三、测试环境" />
+    <label>自定义 Token 值（留空自动生成）</label>
+    <input type="text" id="localCustomToken" placeholder="留空自动生成 lt_xxxx..." />
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="hideLocalModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveLocal()">生成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 显示新生成的 Token（仅一次） -->
+<div class="modal-overlay" id="tokenResultModal" style="display:none">
+  <div class="modal">
+    <h3>✅ Token 已生成</h3>
+    <p style="color:#8b949e;font-size:13px;margin-bottom:12px">请立即复制保存，此页面关闭后将无法再次查看完整 Token。</p>
+    <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:12px;font-family:monospace;font-size:14px;color:#79c0ff;word-break:break-all" id="tokenResultValue"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="copyTokenResult()">复制</button>
+      <button class="btn btn-secondary" onclick="hideTokenResult()">关闭</button>
     </div>
   </div>
 </div>
@@ -251,39 +344,48 @@
 <div class="toast" id="toast"></div>
 
 <script>
-var ANTHROPIC_MODELS = ['minimax-m3', 'minimax-m2.7', 'minimax-m2.5', 'qwen3.7-max', 'qwen3.7-plus'];
-var currentRuntimeModel = null;
-var authToken = '';
+// ============================
+// 全局状态
+// ============================
 var adminPassword = '';
+var currentRuntimeModel = null;
 var availableModels = [];
-var modelMapData = { modelMap: {} };
+// 缓存已加载的 Token 列表数据，避免编辑时重复拉取全部 Token
+var cachedUpstreamTokens = [];
+var cachedLocalTokens = [];
+var ANTHROPIC_MODELS = ['minimax-m3', 'minimax-m2.7', 'minimax-m2.5', 'qwen3.7-max', 'qwen3.7-plus'];
+var lastLogId = 0;
+var logsTimer = null;
 
-// Auth functions
+// ============================
+// 认证
+// ============================
 function doLogin() {
   var pw = document.getElementById('authPassword').value;
   if (!pw) { document.getElementById('authError').textContent = '请输入密码'; return; }
-  fetch('/api/auth', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password: pw })
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.success) {
+  // Docker 版密码验证：直接尝试调用管理接口
+  fetch('/api/upstream-tokens', { headers: { 'X-Admin-Password': pw } })
+    .then(function(r) {
+      if (r.ok) return r.json();
+      throw new Error('密码错误');
+    })
+    .then(function() {
       adminPassword = pw;
-      try { localStorage.setItem('admin_password', pw); localStorage.setItem('admin_password_time', String(Date.now())); } catch(e) {}
+      // 安全：使用 sessionStorage 而非 localStorage，关闭浏览器后自动清除密码
+      try { sessionStorage.setItem('admin_password', pw); } catch(e) {}
       document.getElementById('authOverlay').style.display = 'none';
       document.getElementById('mainContent').style.display = '';
       initApp();
-    } else {
-      document.getElementById('authError').textContent = data.error?.message || '密码错误';
-    }
-  }).catch(function(err) {
-    document.getElementById('authError').textContent = '网络错误: ' + err.message;
-  });
+    })
+    .catch(function(err) {
+      document.getElementById('authError').textContent = err.message || '密码错误';
+    });
 }
 
 function doLogout() {
   adminPassword = '';
-  try { localStorage.removeItem('admin_password'); localStorage.removeItem('admin_password_time'); } catch(e) {}
+  // 安全：清除 sessionStorage 中的密码
+  try { sessionStorage.removeItem('admin_password'); } catch(e) {}
   document.getElementById('mainContent').style.display = 'none';
   document.getElementById('authOverlay').style.display = '';
   document.getElementById('authPassword').value = '';
@@ -291,143 +393,108 @@ function doLogout() {
 }
 
 function getAdminHeaders() {
-  var h = {};
-  if (adminPassword) h['X-Admin-Password'] = adminPassword;
-  return h;
+  return adminPassword ? { 'X-Admin-Password': adminPassword } : {};
 }
 
-function showChangePassword() { document.getElementById('pwModal').style.display = ''; }
-function hideChangePassword() { document.getElementById('pwModal').style.display = 'none'; document.getElementById('pwOld').value = ''; document.getElementById('pwNew').value = ''; }
-
-function doChangePassword() {
-  var oldPw = document.getElementById('pwOld').value;
-  var newPw = document.getElementById('pwNew').value;
-  if (!oldPw) { showToast('请输入当前密码', true); return; }
-  if (!newPw || newPw.length < 4) { showToast('新密码至少 4 位', true); return; }
-  fetch('/api/auth/change', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders()),
-    body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw })
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.success) {
-      adminPassword = newPw;
-      try { localStorage.setItem('admin_password', newPw); localStorage.setItem('admin_password_time', String(Date.now())); } catch(e) {}
-      hideChangePassword();
-      showToast('密码已修改');
-    } else {
-      showToast(data.error?.message || '修改失败', true);
-    }
-  }).catch(function(err) { showToast('修改失败: ' + err.message, true); });
-}
-
-// Try auto-login from localStorage (30 day validity)
-var PW_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 days in ms
+// 自动登录（使用 sessionStorage，关闭浏览器后自动失效）
 try {
-  var savedPw = localStorage.getItem('admin_password');
-  var savedTime = parseInt(localStorage.getItem('admin_password_time') || '0');
-  if (savedPw && savedTime && (Date.now() - savedTime < PW_EXPIRY)) {
-    // Within 30 days, skip server verify
+  var savedPw = sessionStorage.getItem('admin_password');
+  if (savedPw) {
     adminPassword = savedPw;
-    document.getElementById('authOverlay').style.display = 'none';
-    document.getElementById('mainContent').style.display = '';
-    initApp();
-  } else if (savedPw) {
-    // Expired or no timestamp, verify with server
-    adminPassword = savedPw;
-    fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: savedPw })
-    }).then(function(r) { return r.json(); }).then(function(data) {
-      if (data.success) {
-        try { localStorage.setItem('admin_password_time', String(Date.now())); } catch(e) {}
-        document.getElementById('authOverlay').style.display = 'none';
-        document.getElementById('mainContent').style.display = '';
-        initApp();
-      } else {
-        try { localStorage.removeItem('admin_password'); localStorage.removeItem('admin_password_time'); } catch(e) {}
-        adminPassword = '';
-      }
-    }).catch(function() {});
+    fetch('/api/upstream-tokens', { headers: { 'X-Admin-Password': savedPw } })
+      .then(function(r) {
+        if (r.ok) {
+          document.getElementById('authOverlay').style.display = 'none';
+          document.getElementById('mainContent').style.display = '';
+          initApp();
+        } else {
+          sessionStorage.removeItem('admin_password');
+          adminPassword = '';
+        }
+      })
+      .catch(function() {});
   }
 } catch(e) {}
 
+// ============================
+// Tab 切换
+// ============================
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(function(btn, i) {
+    btn.classList.remove('active');
+  });
+  document.querySelectorAll('.tab-panel').forEach(function(p) {
+    p.classList.remove('active');
+  });
+  document.getElementById('tab-' + name).classList.add('active');
+  // 激活对应按钮
+  var tabs = ['models', 'upstream', 'local', 'stats'];
+  var idx = tabs.indexOf(name);
+  if (idx >= 0) document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+
+  // 切换时刷新对应数据
+  if (name === 'upstream') loadUpstreamTokens();
+  if (name === 'local') loadLocalTokens();
+  if (name === 'stats') { loadStatsOverview(); fetchLogs(); }
+}
+
+// ============================
+// 初始化
+// ============================
+function initApp() {
+  loadModels();
+  loadUpstreamTokens();
+  loadLocalTokens();
+  loadStatsOverview();
+  fetchLogs();
+  // 定时刷新日志（页面卸载时自动清除）
+  if (logsTimer) clearInterval(logsTimer);
+  logsTimer = setInterval(fetchLogs, 3000);
+}
+
+// 页面卸载时清除定时器，避免内存泄漏和不必要的网络请求
+window.addEventListener('beforeunload', function() {
+  if (logsTimer) clearInterval(logsTimer);
+});
+
+// ============================
+// 模型管理
+// ============================
 function isAnthropic(model) {
   return ANTHROPIC_MODELS.indexOf(model) !== -1;
 }
 
-function getAuthHeaders() {
-  return authToken ? { 'Authorization': 'Bearer ' + authToken } : {};
-}
-
-function saveToken() {
-  var token = document.getElementById('tokenInput').value.trim();
-  if (token) {
-    authToken = token;
-    try { localStorage.setItem('opencode_token', token); } catch(e) {}
-    document.getElementById('tokenStatus').textContent = '\u2713 Token \u5df2\u4fdd\u5b58';
-    document.getElementById('tokenStatus').className = 'token-status ok';
-    loadModels();
-  } else {
-    document.getElementById('tokenStatus').textContent = '\u8bf7\u8f93\u5165\u6709\u6548\u7684 token';
-    document.getElementById('tokenStatus').className = 'token-status';
-  }
-}
-
 function loadModels() {
-  if (!authToken) {
-    document.getElementById('modelGrid').innerHTML = '<div class="loading">\u8bf7\u5148\u8f93\u5165\u5e76\u4fdd\u5b58 OpenCode Go Token</div>';
-    return;
-  }
-  Promise.all([
-    fetch('/v1/models', { headers: getAuthHeaders() }).then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }),
-    fetch('/api/default-model').then(function(r) { return r.json(); })
-  ]).then(function(results) {
-    var modelsData = results[0];
-    var defaultData = results[1];
-
-    currentRuntimeModel = defaultData.runtimeDefault || defaultData.envDefault || null;
-    updateStatusBar();
-
-    var models = (modelsData.data || []).map(function(m) { return m.id; }).sort();
+  fetch('/v1/models').then(function(r) { return r.json(); }).then(function(data) {
+    var models = (data.data || []).map(function(m) { return m.id; }).sort();
     availableModels = models;
     var grid = document.getElementById('modelGrid');
     grid.innerHTML = '';
-
+    if (models.length === 0) {
+      grid.innerHTML = '<div style="padding:40px;text-align:center;color:#8b949e">未获取到模型列表</div>';
+      return;
+    }
     models.forEach(function(model) {
       var anthropic = isAnthropic(model);
       var card = document.createElement('div');
       card.className = 'model-card' + (currentRuntimeModel === model ? ' selected' : '');
       card.setAttribute('data-model', model);
       card.onclick = function() { selectModel(model); };
-
-      var nameDiv = document.createElement('div');
-      nameDiv.className = 'model-name';
-      nameDiv.textContent = model;
-
-      var metaDiv = document.createElement('div');
-      metaDiv.className = 'model-meta';
-      var tag = document.createElement('span');
-      tag.className = 'api-tag ' + (anthropic ? 'api-anthropic' : 'api-openai');
-      tag.textContent = anthropic ? 'Anthropic' : 'OpenAI';
-      metaDiv.appendChild(tag);
-
-      card.appendChild(nameDiv);
-      card.appendChild(metaDiv);
+      card.innerHTML = '<div class="model-name">' + model + '</div>' +
+        '<div class="model-meta"><span class="api-tag ' + (anthropic ? 'api-anthropic' : 'api-openai') + '">' + (anthropic ? 'Anthropic' : 'OpenAI') + '</span></div>';
       grid.appendChild(card);
     });
-
-    // Update model map dropdown after models are loaded
-    renderModelMap();
   }).catch(function(err) {
-    document.getElementById('modelGrid').innerHTML = '<div class="loading">加载失败: ' + err.message + '（请检查 Token 是否正确）</div>';
+    document.getElementById('modelGrid').innerHTML = '<div style="padding:40px;text-align:center;color:#f85149">加载失败: ' + escapeHtml(err.message) + '</div>';
+  });
+
+  fetch('/api/default-model').then(function(r) { return r.json(); }).then(function(data) {
+    currentRuntimeModel = data.runtimeDefault || data.envDefault || null;
+    updateModelStatus();
   });
 }
 
-function updateStatusBar() {
+function updateModelStatus() {
   var el = document.getElementById('currentModel');
   var btn = document.getElementById('btnClear');
   if (currentRuntimeModel) {
@@ -449,20 +516,15 @@ function selectModel(model) {
   }).then(function(r) { return r.json(); }).then(function(data) {
     if (data.success) {
       currentRuntimeModel = model;
-      updateStatusBar();
-      var cards = document.querySelectorAll('.model-card');
-      cards.forEach(function(card) {
-        if (card.getAttribute('data-model') === model) {
-          card.classList.add('selected');
-        } else {
-          card.classList.remove('selected');
-        }
+      updateModelStatus();
+      document.querySelectorAll('.model-card').forEach(function(card) {
+        card.classList.toggle('selected', card.getAttribute('data-model') === model);
       });
       showToast(data.message);
+    } else {
+      showToast(data.error?.message || '设置失败', true);
     }
-  }).catch(function(err) {
-    showToast('设置失败: ' + err.message, true);
-  });
+  }).catch(function(err) { showToast('设置失败: ' + err.message, true); });
 }
 
 function clearModel() {
@@ -473,66 +535,322 @@ function clearModel() {
   }).then(function(r) { return r.json(); }).then(function(data) {
     if (data.success) {
       currentRuntimeModel = null;
-      updateStatusBar();
-      var cards = document.querySelectorAll('.model-card');
-      cards.forEach(function(card) { card.classList.remove('selected'); });
+      updateModelStatus();
+      document.querySelectorAll('.model-card').forEach(function(card) { card.classList.remove('selected'); });
       showToast(data.message);
     }
-  }).catch(function(err) {
-    showToast('取消失败: ' + err.message, true);
+  }).catch(function(err) { showToast('取消失败: ' + err.message, true); });
+}
+
+// ============================
+// 上游 Token 池
+// ============================
+function loadUpstreamTokens() {
+  fetch('/api/upstream-tokens', { headers: getAdminHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      cachedUpstreamTokens = data.tokens || [];
+      renderUpstreamTable(cachedUpstreamTokens);
+    })
+    .catch(function(err) {
+      document.getElementById('upstreamBody').innerHTML = '<tr><td colspan="10" style="text-align:center;color:#f85149">加载失败: ' + escapeHtml(err.message) + '</td></tr>';
+    });
+}
+
+function renderUpstreamTable(tokens) {
+  var tbody = document.getElementById('upstreamBody');
+  if (tokens.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#484f58;padding:20px">暂无上游 Token，请点击"添加 Token"</td></tr>';
+    return;
+  }
+  tbody.innerHTML = '';
+  tokens.forEach(function(t) {
+    var tr = document.createElement('tr');
+    var statusBadge = t.enabled
+      ? '<span class="badge badge-ok">启用</span>'
+      : '<span class="badge badge-err">禁用</span>';
+    var urlDisplay = t.upstream_url ? escapeHtml(t.upstream_url) : '<span style="color:#484f58">全局默认</span>';
+    tr.innerHTML =
+      '<td>' + t.id + '</td>' +
+      '<td style="font-weight:600">' + escapeHtml(t.name) + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;color:#79c0ff">' + escapeHtml(t.token) + '</td>' +
+      '<td>' + t.weight + '</td>' +
+      '<td style="font-size:12px">' + urlDisplay + '</td>' +
+      '<td>' + t.usage_count + '</td>' +
+      '<td>' + t.fail_count + '/' + t.max_failures + '</td>' +
+      '<td>' + t.priority + '</td>' +
+      '<td>' + statusBadge + '</td>' +
+      '<td>' +
+        '<button class="btn btn-secondary btn-small" onclick="editUpstream(' + t.id + ')">编辑</button> ' +
+        '<button class="btn btn-danger btn-small" onclick="deleteUpstream(' + t.id + ')">删除</button>' +
+      '</td>';
+    tbody.appendChild(tr);
   });
 }
 
-function showToast(msg, isError) {
-  var toast = document.getElementById('toast');
-  toast.textContent = msg;
-  toast.className = 'toast show' + (isError ? ' error' : '');
-  setTimeout(function() { toast.className = 'toast'; }, 2500);
+function showAddUpstream() {
+  document.getElementById('upstreamModalTitle').textContent = '添加上游 Token';
+  document.getElementById('upstreamEditId').value = '';
+  document.getElementById('upstreamToken').value = '';
+  document.getElementById('upstreamName').value = '';
+  document.getElementById('upstreamWeight').value = '1';
+  document.getElementById('upstreamUrl').value = '';
+  document.getElementById('upstreamMaxFail').value = '3';
+  document.getElementById('upstreamCheckInterval').value = '5';
+  document.getElementById('upstreamPriority').value = '5';
+  document.getElementById('upstreamEnabled').value = '1';
+  document.getElementById('upstreamModal').style.display = '';
 }
 
-// Logs
-var lastLogId = 0;
-var autoScroll = true;
-var logsTimer = null;
-
-function toggleAutoScroll() {
-  autoScroll = !autoScroll;
-  var btn = document.getElementById('btnAutoScroll');
-  btn.className = 'logs-toggle' + (autoScroll ? ' active' : '');
+function editUpstream(id) {
+  // 优先从缓存查找，避免重复拉取全部 Token
+  var t = cachedUpstreamTokens.find(function(x) { return x.id === id; });
+  if (t) {
+    fillUpstreamForm(id, t);
+  } else {
+    // 缓存中没有，回退到 API 拉取
+    fetch('/api/upstream-tokens', { headers: getAdminHeaders() })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var found = (data.tokens || []).find(function(x) { return x.id === id; });
+        if (!found) { showToast('Token 不存在', true); return; }
+        fillUpstreamForm(id, found);
+      });
+  }
 }
 
-function clearLogs() {
-  fetch('/api/logs', { method: 'DELETE', headers: getAdminHeaders() }).then(function(r) { return r.json(); }).then(function() {
-    lastLogId = 0;
-    document.getElementById('logsContainer').innerHTML = '<div class="logs-empty">暂无请求日志</div>';
-    document.getElementById('logsCount').textContent = '';
-    showToast('日志已清空');
+// 填充上游 Token 编辑表单
+function fillUpstreamForm(id, t) {
+  document.getElementById('upstreamModalTitle').textContent = '编辑上游 Token #' + id;
+  document.getElementById('upstreamEditId').value = id;
+  document.getElementById('upstreamToken').value = ''; // 编辑时不显示原 Token，留空表示保持不变
+  document.getElementById('upstreamToken').placeholder = '留空保持不变（当前: ' + escapeHtml(t.token) + '）';
+  document.getElementById('upstreamName').value = t.name;
+  document.getElementById('upstreamWeight').value = t.weight;
+  document.getElementById('upstreamUrl').value = t.upstream_url || '';
+  document.getElementById('upstreamMaxFail').value = t.max_failures;
+  document.getElementById('upstreamCheckInterval').value = t.check_interval_minutes;
+  document.getElementById('upstreamPriority').value = t.priority;
+  document.getElementById('upstreamEnabled').value = t.enabled ? '1' : '0';
+  document.getElementById('upstreamModal').style.display = '';
+}
+
+function hideUpstreamModal() {
+  document.getElementById('upstreamModal').style.display = 'none';
+}
+
+function saveUpstream() {
+  var id = document.getElementById('upstreamEditId').value;
+  var tokenValue = document.getElementById('upstreamToken').value.trim();
+  var body = {
+    name: document.getElementById('upstreamName').value.trim(),
+    weight: parseInt(document.getElementById('upstreamWeight').value) || 1,
+    upstream_url: document.getElementById('upstreamUrl').value.trim() || null,
+    max_failures: parseInt(document.getElementById('upstreamMaxFail').value) || 3,
+    check_interval_minutes: parseInt(document.getElementById('upstreamCheckInterval').value) || 5,
+    priority: parseInt(document.getElementById('upstreamPriority').value) || 5,
+    enabled: document.getElementById('upstreamEnabled').value === '1',
+  };
+  // 新建时 token 必填，编辑时留空表示保持不变
+  if (tokenValue) body.token = tokenValue;
+  if (!id && !tokenValue) { showToast('Token 为必填项', true); return; }
+  if (!body.name) { showToast('名称为必填项', true); return; }
+
+  var url = id ? '/api/upstream-tokens/' + id : '/api/upstream-tokens';
+  var method = id ? 'PUT' : 'POST';
+
+  fetch(url, {
+    method: method,
+    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders()),
+    body: JSON.stringify(body)
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.success) {
+      hideUpstreamModal();
+      showToast(id ? '已更新' : '已添加');
+      loadUpstreamTokens();
+    } else {
+      showToast(data.error?.message || '保存失败', true);
+    }
+  }).catch(function(err) { showToast('保存失败: ' + err.message, true); });
+}
+
+function deleteUpstream(id) {
+  if (!confirm('确定删除此上游 Token？')) return;
+  fetch('/api/upstream-tokens/' + id, {
+    method: 'DELETE',
+    headers: getAdminHeaders()
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.success) {
+      showToast('已删除');
+      loadUpstreamTokens();
+    } else {
+      showToast(data.error?.message || '删除失败', true);
+    }
+  }).catch(function(err) { showToast('删除失败: ' + err.message, true); });
+}
+
+function checkHealth() {
+  showToast('正在检查...');
+  fetch('/api/upstream-tokens/health-check', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders())
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.success) {
+      showToast('健康检查完成');
+      loadUpstreamTokens();
+    } else {
+      showToast(data.error?.message || '检查失败', true);
+    }
+  }).catch(function(err) { showToast('检查失败: ' + err.message, true); });
+}
+
+// ============================
+// 本地 Token
+// ============================
+function loadLocalTokens() {
+  fetch('/api/local-tokens', { headers: getAdminHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      cachedLocalTokens = data.tokens || [];
+      renderLocalTable(cachedLocalTokens);
+    })
+    .catch(function(err) {
+      document.getElementById('localBody').innerHTML = '<tr><td colspan="11" style="text-align:center;color:#f85149">加载失败: ' + escapeHtml(err.message) + '</td></tr>';
+    });
+}
+
+function renderLocalTable(tokens) {
+  var tbody = document.getElementById('localBody');
+  if (tokens.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#484f58;padding:20px">暂无本地 Token，请点击"生成 Token"</td></tr>';
+    return;
+  }
+  tbody.innerHTML = '';
+  tokens.forEach(function(t) {
+    var tr = document.createElement('tr');
+    var statusBadge = t.enabled
+      ? '<span class="badge badge-ok">启用</span>'
+      : '<span class="badge badge-err">禁用</span>';
+    var maskedToken = t.token ? t.token.slice(0, 10) + '****' : '-';
+    var lastUsed = t.last_used_at ? formatTime(t.last_used_at) : '<span style="color:#484f58">未使用</span>';
+    tr.innerHTML =
+      '<td>' + t.id + '</td>' +
+      '<td style="font-weight:600">' + escapeHtml(t.name) + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;color:#79c0ff">' + maskedToken + '</td>' +
+      '<td>' + t.total_requests + '</td>' +
+      '<td style="color:#3fb950">' + t.success_count + '</td>' +
+      '<td style="color:#f85149">' + t.fail_count + '</td>' +
+      '<td>' + formatNumber(t.total_input_tokens) + '</td>' +
+      '<td>' + formatNumber(t.total_output_tokens) + '</td>' +
+      '<td style="font-size:12px">' + lastUsed + '</td>' +
+      '<td>' + statusBadge + '</td>' +
+      '<td>' +
+        '<button class="btn btn-secondary btn-small" onclick="toggleLocal(' + t.id + ',' + (t.enabled ? 0 : 1) + ')">' + (t.enabled ? '禁用' : '启用') + '</button> ' +
+        '<button class="btn btn-danger btn-small" onclick="deleteLocal(' + t.id + ')">删除</button>' +
+      '</td>';
+    tbody.appendChild(tr);
   });
 }
 
-function formatTime(iso) {
-  var d = new Date(iso);
-  return d.toLocaleTimeString('zh-CN', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+function showAddLocal() {
+  document.getElementById('localName').value = '';
+  document.getElementById('localCustomToken').value = '';
+  document.getElementById('localModal').style.display = '';
 }
 
-function renderLog(log) {
-  var row = document.createElement('div');
-  row.className = 'log-row';
-  var statusOk = log.status >= 200 && log.status < 300;
-  row.innerHTML =
-    '<span class="log-time">' + formatTime(log.time) + '</span>' +
-    '<span class="log-method ' + (log.method === 'POST' ? 'post' : 'get') + '">' + log.method + '</span>' +
-    '<span class="log-path">' + log.path + '</span>' +
-    '<span class="log-model">' + log.model + '</span>' +
-    (log.resolvedModel && log.resolvedModel !== log.model ? '<span class="log-arrow">\u2192</span><span class="log-resolved">' + log.resolvedModel + '</span>' : '') +
-    '<span class="log-tags">' +
-      (log.stream ? '<span class="log-tag stream">stream</span>' : '') +
-      '<span class="log-tag api">' + log.api + '</span>' +
-    '</span>' +
-    '<span class="log-status ' + (statusOk ? 'ok' : 'err') + '">' + log.status + '</span>';
-  return row;
+function hideLocalModal() {
+  document.getElementById('localModal').style.display = 'none';
 }
 
+function saveLocal() {
+  var name = document.getElementById('localName').value.trim();
+  var customToken = document.getElementById('localCustomToken').value.trim();
+  if (!name) { showToast('名称为必填项', true); return; }
+
+  fetch('/api/local-tokens', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders()),
+    body: JSON.stringify({ name: name, token: customToken || undefined })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.success) {
+      hideLocalModal();
+      // 显示完整 Token（仅一次）
+      document.getElementById('tokenResultValue').textContent = data.token._full_token || data.token.token;
+      document.getElementById('tokenResultModal').style.display = '';
+      loadLocalTokens();
+    } else {
+      showToast(data.error?.message || '生成失败', true);
+    }
+  }).catch(function(err) { showToast('生成失败: ' + err.message, true); });
+}
+
+function toggleLocal(id, enabled) {
+  fetch('/api/local-tokens/' + id, {
+    method: 'PUT',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders()),
+    body: JSON.stringify({ enabled: !!enabled })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.success) {
+      showToast(enabled ? '已启用' : '已禁用');
+      loadLocalTokens();
+    }
+  }).catch(function(err) { showToast('操作失败: ' + err.message, true); });
+}
+
+function deleteLocal(id) {
+  if (!confirm('确定删除此本地 Token？删除后使用该 Token 的客户端将无法访问。')) return;
+  fetch('/api/local-tokens/' + id, {
+    method: 'DELETE',
+    headers: getAdminHeaders()
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.success) {
+      showToast('已删除');
+      loadLocalTokens();
+    }
+  }).catch(function(err) { showToast('删除失败: ' + err.message, true); });
+}
+
+function hideTokenResult() {
+  document.getElementById('tokenResultModal').style.display = 'none';
+}
+
+function copyTokenResult() {
+  var text = document.getElementById('tokenResultValue').textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    showToast('已复制到剪贴板');
+  }).catch(function() {
+    // fallback
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('已复制');
+  });
+}
+
+// ============================
+// 使用统计
+// ============================
+function loadStatsOverview() {
+  fetch('/api/stats/overview', { headers: getAdminHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      document.getElementById('statTotalReq').textContent = formatNumber(data.requests.total);
+      document.getElementById('statSuccess').textContent = formatNumber(data.requests.success);
+      document.getElementById('statFail').textContent = formatNumber(data.requests.fail);
+      document.getElementById('statInput').textContent = formatNumber(data.tokens.input);
+      document.getElementById('statOutput').textContent = formatNumber(data.tokens.output);
+      document.getElementById('statUpstream').textContent = data.upstream.total;
+      document.getElementById('statUpstreamSub').textContent = '启用 ' + data.upstream.enabled + ' / 禁用 ' + data.upstream.disabled;
+    })
+    .catch(function() {});
+}
+
+// ============================
+// 日志
+// ============================
 function fetchLogs() {
   fetch('/api/logs?since=' + lastLogId).then(function(r) { return r.json(); }).then(function(data) {
     if (!data.logs || data.logs.length === 0) return;
@@ -543,231 +861,64 @@ function fetchLogs() {
       container.appendChild(renderLog(log));
       lastLogId = Math.max(lastLogId, log.id);
     });
-    document.getElementById('logsCount').textContent = '\u5171 ' + data.total + ' \u6761';
-    if (autoScroll) container.scrollTop = container.scrollHeight;
+    document.getElementById('logsCount').textContent = '共 ' + data.total + ' 条';
+    container.scrollTop = container.scrollHeight;
   }).catch(function() {});
 }
 
-logsTimer = setInterval(fetchLogs, 2000);
-fetchLogs();
-
-// App init (called after auth)
-function initApp() {
-  // Load token from localStorage
-  try {
-    var saved = localStorage.getItem('opencode_token');
-    if (saved) {
-      authToken = saved;
-      document.getElementById('tokenInput').value = saved;
-      document.getElementById('tokenStatus').textContent = '\u2713 \u5df2\u4ece\u672c\u5730\u5b58\u50a8\u52a0\u8f7d';
-      document.getElementById('tokenStatus').className = 'token-status ok';
-    }
-  } catch(e) {}
-  loadModels();
-  loadModelMap();
-  loadUpstream();
-  loadTokenLimits();
-  fetchLogs();
+function renderLog(log) {
+  var row = document.createElement('div');
+  row.className = 'log-row';
+  var statusOk = log.status >= 200 && log.status < 300;
+  row.innerHTML =
+    '<span class="log-time">' + formatTime(log.time) + '</span>' +
+    '<span class="log-method ' + (log.method === 'POST' ? 'post' : 'get') + '">' + log.method + '</span>' +
+    '<span class="log-path">' + log.path + '</span>' +
+    '<span class="log-model">' + (log.model || '-') + '</span>' +
+    (log.resolvedModel && log.resolvedModel !== log.model ? '<span class="log-arrow">→</span><span class="log-resolved">' + log.resolvedModel + '</span>' : '') +
+    '<span class="log-tag ' + (log.stream ? 'stream' : 'api') + '">' + (log.stream ? 'stream' : log.api || '-') + '</span>' +
+    '<span class="log-status ' + (statusOk ? 'ok' : 'err') + '">' + log.status + '</span>';
+  return row;
 }
 
-// Auto-refresh models every 30 seconds
-setInterval(function() {
-  if (authToken && adminPassword) loadModels();
-}, 30000);
-
-// Model Map functions
-function loadModelMap() {
-  fetch('/api/model-map').then(function(r) { return r.json(); }).then(function(data) {
-    modelMapData = data;
-    renderModelMap();
-  }).catch(function() {});
+function clearLogs() {
+  if (!confirm('确定清空所有日志？')) return;
+  fetch('/api/logs', { method: 'DELETE', headers: getAdminHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function() {
+      lastLogId = 0;
+      document.getElementById('logsContainer').innerHTML = '<div class="logs-empty">暂无请求日志</div>';
+      document.getElementById('logsCount').textContent = '';
+      showToast('日志已清空');
+    });
 }
 
-function renderModelMap() {
-  var tbody = document.getElementById('mapTableBody');
-  tbody.innerHTML = '';
-  var modelMap = modelMapData.modelMap || {};
-  var keys = Object.keys(modelMap).sort();
-
-  keys.forEach(function(from) {
-    var tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td class="map-from">' + from + '</td>' +
-      '<td class="map-arrow">\u2192</td>' +
-      '<td class="map-to" id="map-td-' + from + '">' + modelMap[from] + '</td>' +
-      '<td id="map-action-' + from + '"><button class="map-btn-edit" onclick="editMapping(\'' + from + '\',\'' + modelMap[from] + '\')">\u7f16\u8f91</button><button class="map-btn-del" onclick="deleteMapping(\'' + from + '\')">\u5220\u9664</button></td>';
-    tbody.appendChild(tr);
-  });
-
-  if (keys.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#484f58;padding:20px">\u6682\u65e0\u6620\u5c04\u914d\u7f6e\uff0c\u8bf7\u6dfb\u52a0</td></tr>';
-  }
-
-  // Update mapTo dropdown
-  var select = document.getElementById('mapTo');
-  var currentVal = select.value;
-  select.innerHTML = '<option value="">选择目标模型...</option>';
-  availableModels.forEach(function(m) {
-    var opt = document.createElement('option');
-    opt.value = m;
-    opt.textContent = m;
-    select.appendChild(opt);
-  });
-  if (currentVal) select.value = currentVal;
+// ============================
+// 工具函数
+// ============================
+function showToast(msg, isError) {
+  var toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(function() { toast.className = 'toast'; }, 2500);
 }
 
-function addMapping() {
-  var from = document.getElementById('mapFrom').value.trim();
-  var to = document.getElementById('mapTo').value;
-  if (!from) { showToast('请输入请求模型名称', true); return; }
-  if (!to) { showToast('请选择目标模型', true); return; }
-  fetch('/api/model-map', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders()),
-    body: JSON.stringify({ from: from, to: to })
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.success) {
-      document.getElementById('mapFrom').value = '';
-      showToast(data.message);
-      loadModelMap();
-    } else {
-      showToast(data.error?.message || '添加失败', true);
-    }
-  }).catch(function(err) { showToast('添加失败: ' + err.message, true); });
+function formatTime(iso) {
+  if (!iso) return '-';
+  var d = new Date(iso);
+  return d.toLocaleString('zh-CN', { hour12: false });
 }
 
-function deleteMapping(from) {
-  fetch('/api/model-map', {
-    method: 'DELETE',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders()),
-    body: JSON.stringify({ from: from })
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.success) {
-      showToast(data.message);
-      loadModelMap();
-    }
-  }).catch(function(err) { showToast('删除失败: ' + err.message, true); });
+function formatNumber(n) {
+  if (n === undefined || n === null) return '0';
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return String(n);
 }
 
-// Upstream URL functions
-function loadUpstream() {
-  fetch('/api/upstream-url').then(function(r) { return r.json(); }).then(function(data) {
-    document.getElementById('upstreamInput').value = data.custom || '';
-    document.getElementById('upstreamInput').placeholder = data.default;
-    var btn = document.getElementById('btnResetUpstream');
-    btn.disabled = !data.custom;
-    if (data.custom) {
-      document.getElementById('upstreamStatus').textContent = '\u2713 \u5df2\u8bbe\u7f6e\u4e3a: ' + data.current;
-      document.getElementById('upstreamStatus').className = 'token-status ok';
-    } else {
-      document.getElementById('upstreamStatus').textContent = '\u4f7f\u7528\u9ed8\u8ba4\u5730\u5740: ' + data.default;
-      document.getElementById('upstreamStatus').className = 'token-status';
-    }
-  }).catch(function() {});
-}
-
-function saveUpstream() {
-  var url = document.getElementById('upstreamInput').value.trim();
-  if (!url) { showToast('请输入上游 API 地址', true); return; }
-  fetch('/api/upstream-url', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders()),
-    body: JSON.stringify({ url: url })
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.success) {
-      showToast(data.message);
-      loadUpstream();
-      loadModels();
-    } else {
-      showToast(data.error?.message || '设置失败', true);
-    }
-  }).catch(function(err) { showToast('设置失败: ' + err.message, true); });
-}
-
-function resetUpstream() {
-  fetch('/api/upstream-url', { method: 'DELETE', headers: getAdminHeaders() }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.success) {
-      showToast(data.message);
-      loadUpstream();
-      loadModels();
-    }
-  }).catch(function(err) { showToast('重置失败: ' + err.message, true); });
-}
-
-// Token limits functions
-function loadTokenLimits() {
-  fetch('/api/token-limits').then(function(r) { return r.json(); }).then(function(data) {
-    document.getElementById('maxContextTokensInput').value = data.maxContextTokens || '';
-    document.getElementById('maxOutputTokensInput').value = data.maxOutputTokens || '';
-    if (data.maxContextTokens || data.maxOutputTokens) {
-      var parts = [];
-      if (data.maxContextTokens) parts.push('上下文: ' + data.maxContextTokens);
-      if (data.maxOutputTokens) parts.push('输出: ' + data.maxOutputTokens);
-      document.getElementById('tokenLimitsStatus').textContent = '\u2713 ' + parts.join(', ');
-      document.getElementById('tokenLimitsStatus').className = 'token-status ok';
-    } else {
-      document.getElementById('tokenLimitsStatus').textContent = '未设置限制';
-      document.getElementById('tokenLimitsStatus').className = 'token-status';
-    }
-  }).catch(function() {});
-}
-
-function saveTokenLimits() {
-  var ctx = document.getElementById('maxContextTokensInput').value.trim();
-  var out = document.getElementById('maxOutputTokensInput').value.trim();
-  var body = {};
-  if (ctx) body.maxContextTokens = parseInt(ctx);
-  if (out) body.maxOutputTokens = parseInt(out);
-  if (!ctx && !out) {
-    body.maxContextTokens = null;
-    body.maxOutputTokens = null;
-  }
-  fetch('/api/token-limits', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders()),
-    body: JSON.stringify(body)
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.success) {
-      showToast('Token 限制已更新');
-      loadTokenLimits();
-    } else {
-      showToast(data.error?.message || '设置失败', true);
-    }
-  }).catch(function(err) { showToast('设置失败: ' + err.message, true); });
-}
-
-// Edit mapping inline
-function editMapping(from, currentTo) {
-  var td = document.getElementById('map-td-' + from);
-  var actionTd = document.getElementById('map-action-' + from);
-  if (!td || !actionTd) return;
-  var html = '<div class="map-inline-edit"><select id="map-edit-select-' + from + '">';
-  availableModels.forEach(function(m) {
-    html += '<option value="' + m + '"' + (m === currentTo ? ' selected' : '') + '>' + m + '</option>';
-  });
-  html += '</select><button class="btn-mini btn-ok" onclick="saveEditMapping(\'' + from + '\')">\u2713</button>';
-  html += '<button class="btn-mini btn-cancel" onclick="loadModelMap()">\u2715</button></div>';
-  td.innerHTML = html;
-  actionTd.innerHTML = '';
-}
-
-function saveEditMapping(from) {
-  var select = document.getElementById('map-edit-select-' + from);
-  if (!select) return;
-  var to = select.value;
-  if (!to) { showToast('请选择目标模型', true); return; }
-  fetch('/api/model-map', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders()),
-    body: JSON.stringify({ from: from, to: to })
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.success) {
-      showToast(data.message);
-      loadModelMap();
-    } else {
-      showToast(data.error?.message || '保存失败', true);
-    }
-  }).catch(function(err) { showToast('保存失败: ' + err.message, true); });
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 </script>
 </body>
