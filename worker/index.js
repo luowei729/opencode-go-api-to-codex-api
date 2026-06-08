@@ -268,14 +268,25 @@ async function handleModels(request, env, ctx) {
     // 合并上游模型和元数据
     const mergedModels = upstreamModels.map(m => {
       const meta = metaData[m.id] || {};
+      // 获取上下文窗口和最大输出 token
+      const contextWindow = meta.context_window || null;
+      const maxOutputTokens = meta.max_output_tokens || null;
+      
       return {
         id: m.id,
         object: m.object || 'model',
         created: m.created || null,
         owned_by: m.owned_by || '',
-        // 合并元数据
-        context_window: meta.context_window || null,
-        max_output_tokens: meta.max_output_tokens || null,
+        // Kilo Code 期望的格式：limit.context 和 limit.output
+        // 用于上下文进度条显示和上下文管理
+        limit: {
+          context: contextWindow || 0,
+          output: maxOutputTokens || 0
+        },
+        // 同时保留原始字段名以兼容其他客户端
+        context_window: contextWindow,
+        max_output_tokens: maxOutputTokens,
+        // 其他元数据
         vendor: meta.vendor || null,
         source: meta.source || null,
         supports_vision: meta.supports_vision || 0,
