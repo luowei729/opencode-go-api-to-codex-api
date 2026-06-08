@@ -517,7 +517,9 @@ async function handleResponses(request, env, ctx) {
     }
 
     const upstreamUrl = buildUpstreamUrl(auth.actualUpstreamUrl, upstreamPath);
-    console.log(`[Responses] -> ${upstreamUrl} (model: ${originalModel} -> ${resolvedModel}, stream: ${isStream}, api: ${useAnthropic ? 'anthropic' : 'openai'}, token: #${auth.upstreamToken?.id || 'env'}, local: ${auth.mode === 'local' ? '#' + auth.localTokenId : 'passthrough'})`);
+    // 记录请求日志，包含 max_tokens 信息以便验证自定义值是否生效
+    const maxTokensLog = upstreamBody.max_tokens || upstreamBody.max_output_tokens || 'N/A';
+    console.log(`[Responses] -> ${upstreamUrl} (model: ${originalModel} -> ${resolvedModel}, max_tokens: ${maxTokensLog}, stream: ${isStream}, api: ${useAnthropic ? 'anthropic' : 'openai'}, token: #${auth.upstreamToken?.id || 'env'}, local: ${auth.mode === 'local' ? '#' + auth.localTokenId : 'passthrough'})`);
 
     const response = await makeUpstreamRequest(upstreamUrl, upstreamBody, auth.actualToken, useAnthropic);
     const durationMs = Date.now() - startTime;
@@ -660,7 +662,9 @@ async function handleChatCompletions(request, env, ctx) {
       upstreamBody.stream_options = { include_usage: true };
     }
     
-    console.log(`[Chat] -> ${upstreamUrl} (model: ${originalModel} -> ${resolvedModel}, api: ${useAnthropic ? 'anthropic' : 'openai'}, token: #${auth.upstreamToken?.id || 'env'}, local: ${auth.mode === 'local' ? '#' + auth.localTokenId : 'passthrough'})`);
+    // 记录请求日志，包含 max_tokens 信息以便验证自定义值是否生效
+    const maxTokensLog = upstreamBody.max_tokens || upstreamBody.max_output_tokens || 'N/A';
+    console.log(`[Chat] -> ${upstreamUrl} (model: ${originalModel} -> ${resolvedModel}, max_tokens: ${maxTokensLog}, api: ${useAnthropic ? 'anthropic' : 'openai'}, token: #${auth.upstreamToken?.id || 'env'}, local: ${auth.mode === 'local' ? '#' + auth.localTokenId : 'passthrough'})`);
 
     const response = await makeUpstreamRequest(upstreamUrl, upstreamBody, auth.actualToken, useAnthropic);
     const durationMs = Date.now() - startTime;
