@@ -302,6 +302,13 @@ Codex CLI / OpenAI SDK
 
 ## 更新日志
 
+### 2026-06-08 12:15 - 强制使用 qwen3.7-plus 模型
+
+- **重要**: 修改 `resolveModel` 函数默认返回 `qwen3.7-plus`（OpenCode 不支持 GPT 模型）
+- 移除复杂的模型映射逻辑，简化模型解析流程
+- 同步修改 Docker 和 Workers 版本
+- 通过 D1 数据库设置默认模型为 `qwen3.7-plus`
+
 ### 2026-06-08 19:05 - 第二轮审查 Bug 修复（7 项）
 
 - **HIGH**: Workers 版默认密码添加启动警告，提醒管理员修改密码
