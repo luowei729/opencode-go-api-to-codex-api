@@ -223,8 +223,8 @@ function setRuntimeDefaultModel(model) {
   runtimeDefaultModel = model || null;
 }
 
-// 模型解析优先级：Runtime 强制 > env DEFAULT_MODEL > qwen3.7-plus
-// 原因：OpenCode 不支持 GPT 模型，默认使用 qwen3.7-plus
+// 模型解析优先级：Runtime 强制 > env DEFAULT_MODEL > 用户请求的模型（透传）
+// 原因：如果未设置强制模型，用户请求什么模型就转发什么模型
 function resolveModel(modelName) {
   // 1. Runtime 强制模型（Web UI 设置，优先级最高）
   if (runtimeDefaultModel) {
@@ -236,8 +236,8 @@ function resolveModel(modelName) {
     return process.env.DEFAULT_MODEL.replace(/^opencode-go\//, '');
   }
 
-  // 3. 默认使用 qwen3.7-plus（OpenCode 不支持 GPT 模型）
-  return 'qwen3.7-plus';
+  // 3. 透传用户请求的模型（去除 opencode-go/ 前缀）
+  return modelName.replace(/^opencode-go\//, '');
 }
 
 function buildUpstreamUrl(base, path) {

@@ -485,9 +485,8 @@ export function isAnthropicModel(modelName) {
 
 /**
  * 解析模型名称
- * 修复：增加 runtimeDefault 和 runtimeModelMap 参数覆盖
- * 原因：通过 UI 设置的强制模型和自定义映射必须优先于环境变量和内置映射
- * 默认使用 qwen3.7-plus（OpenCode 不支持 GPT 模型）
+ * 优先级：强制模型 > 环境变量 > 用户请求的模型（透传）
+ * 原因：如果未设置强制模型，用户请求什么模型就转发什么模型
  */
 export function resolveModel(modelName, env, runtimeDefault, runtimeModelMap) {
   // 1. 运行时强制模型（Web UI 设置，优先级最高）
@@ -497,8 +496,8 @@ export function resolveModel(modelName, env, runtimeDefault, runtimeModelMap) {
   const defaultModel = env.DEFAULT_MODEL;
   if (defaultModel) return defaultModel.replace(/^opencode-go\//, '');
 
-  // 3. 默认使用 qwen3.7-plus（OpenCode 不支持 GPT 模型）
-  return 'qwen3.7-plus';
+  // 3. 透传用户请求的模型（去除 opencode-go/ 前缀）
+  return modelName.replace(/^opencode-go\//, '');
 }
 
 export function buildUpstreamUrl(base, path) {
