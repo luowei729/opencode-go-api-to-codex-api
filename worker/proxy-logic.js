@@ -393,9 +393,6 @@ export async function resolveAuth(db, clientToken, upstreamBaseUrl, env) {
     actualUpstreamUrl: upstreamBaseUrl,
   };
 }
-    actualUpstreamUrl: upstreamBaseUrl,
-  };
-}
 
 /**
  * 记录请求统计
