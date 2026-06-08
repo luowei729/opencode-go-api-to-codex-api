@@ -1044,20 +1044,42 @@ export default {
       if (!modelId) return jsonResponse({ error: { message: 'modelId 必填' } }, 400);
       try {
         await ensureDb(env);
+        const parsedContextWindow = contextWindow ? parseInt(contextWindow, 10) : defaults.contextWindow;
+        const parsedMaxOutput = maxOutputTokens ? parseInt(maxOutputTokens, 10) : defaults.maxOutputTokens;
+        const parsedSupportsVision = supportsVision !== undefined ? (supportsVision ? 1 : 0) : defaults.supportsVision;
+        const parsedSupportsTools = supportsTools !== undefined ? (supportsTools ? 1 : 0) : defaults.supportsTools;
+        const parsedPricingInput = pricingInput ? parseFloat(pricingInput) : defaults.pricingInput;
+        const parsedPricingOutput = pricingOutput ? parseFloat(pricingOutput) : defaults.pricingOutput;
+        const parsedApiFormat = apiFormat || defaults.apiFormat;
+        
         await env.DB.prepare(
           'INSERT OR REPLACE INTO model_meta (model_id, vendor, context_window, max_output_tokens, source, supports_vision, supports_tools, pricing_input, pricing_output, api_format, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)'
         ).bind(
           modelId,
           vendor || 'Unknown',
-          contextWindow ? parseInt(contextWindow, 10) : defaults.contextWindow,
-          maxOutputTokens ? parseInt(maxOutputTokens, 10) : defaults.maxOutputTokens,
+          parsedContextWindow,
+          parsedMaxOutput,
           source || '',
-          supportsVision !== undefined ? (supportsVision ? 1 : 0) : defaults.supportsVision,
-          supportsTools !== undefined ? (supportsTools ? 1 : 0) : defaults.supportsTools,
-          pricingInput ? parseFloat(pricingInput) : defaults.pricingInput,
-          pricingOutput ? parseFloat(pricingOutput) : defaults.pricingOutput,
-          apiFormat || defaults.apiFormat
+          parsedSupportsVision,
+          parsedSupportsTools,
+          parsedPricingInput,
+          parsedPricingOutput,
+          parsedApiFormat
         ).run();
+        
+        // 更新运行时缓存，确保下次请求使用新值
+        // 原因：modelMetaLoaded 标志为 true 时不会重新加载，需要手动更新缓存
+        runtimeModelMeta[modelId] = {
+          vendor: vendor || 'Unknown',
+          context_window: parsedContextWindow,
+          max_output_tokens: parsedMaxOutput,
+          supports_vision: parsedSupportsVision,
+          supports_tools: parsedSupportsTools,
+          pricing_input: parsedPricingInput,
+          pricing_output: parsedPricingOutput,
+          api_format: parsedApiFormat
+        };
+        
         return jsonResponse({ success: true, message: `模型 ${modelId} 元数据已保存` });
       } catch (e) {
         console.error('Save model-meta error:', e.message);
@@ -1075,6 +1097,9 @@ export default {
       try {
         await ensureDb(env);
         await env.DB.prepare('DELETE FROM model_meta WHERE model_id = ?').bind(modelId).run();
+        // 清除运行时缓存，确保下次请求不使用已删除的值
+        // 原因：modelMetaLoaded 标志为 true 时不会重新加载，需要手动删除缓存
+        delete runtimeModelMeta[modelId];
         return jsonResponse({ success: true, message: `模型 ${modelId} 元数据已删除` });
       } catch (e) {
         console.error('Delete model-meta error:', e.message);
