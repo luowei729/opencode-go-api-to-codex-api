@@ -301,9 +301,16 @@ export async function addLog(db, ctx, entry) {
     const type = entry.type || 'request';
     const extra = entry.extra ? JSON.stringify(entry.extra) : null;
     
+    // 生成北京时间（UTC+8）作为日志时间
+    // 原因：已存在的表默认值是 UTC，需要显式设置北京时间
+    const now = new Date();
+    const bjTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const timeStr = bjTime.toISOString().replace('T', ' ').substring(0, 19);
+    
     await db.prepare(
-      'INSERT INTO logs (level, type, message, method, path, model, resolved_model, api, stream, status, local_token_id, upstream_token_id, duration_ms, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO logs (time, level, type, message, method, path, model, resolved_model, api, stream, status, local_token_id, upstream_token_id, duration_ms, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
+      timeStr,
       level, type, entry.message || '',
       entry.method || null, entry.path || null, entry.model || null, entry.resolvedModel || null,
       entry.api || null, entry.stream ? 1 : 0, entry.status || null,
