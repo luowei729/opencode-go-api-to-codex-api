@@ -458,7 +458,13 @@ export async function recordRequestStats(db, ctx, localTokenId, upstreamTokenId,
     if (upstreamTokenId && status >= 200 && status < 300 && db) {
       await incrementUpstreamUsage(db, upstreamTokenId);
     }
+    // 构建描述性消息
+    const statusText = status >= 200 && status < 300 ? '成功' : '失败';
+    const message = `${requestPath || '/v1/chat/completions'} ${statusText} (${status}) ${model}→${resolvedModel} ${stream ? 'stream' : ''} ${durationMs}ms`;
     addLog(db, ctx, {
+      level: status >= 400 ? 'error' : 'info',
+      type: 'request',
+      message,
       method: 'POST',
       path: requestPath || '/v1/chat/completions',
       model, resolvedModel, api, stream: !!stream, status,

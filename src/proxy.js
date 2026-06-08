@@ -180,8 +180,15 @@ function recordRequestStats(localTokenId, upstreamTokenId, model, resolvedModel,
       db.incrementUpstreamUsage(upstreamTokenId);
     }
 
+    // 构建描述性消息
+    const statusText = status >= 200 && status < 300 ? '成功' : '失败';
+    const message = `${requestPath || '/v1/chat/completions'} ${statusText} (${status}) ${model}→${resolvedModel} ${stream ? 'stream' : ''} ${durationMs}ms`;
+
     // 写入请求日志（使用原始请求路径，而非上游路径）
     db.addLog({
+      level: status >= 400 ? 'error' : 'info',
+      type: 'request',
+      message,
       method: 'POST',
       path: requestPath || '/v1/chat/completions',
       model,

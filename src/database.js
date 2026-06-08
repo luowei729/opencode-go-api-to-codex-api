@@ -69,6 +69,9 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     time TEXT NOT NULL DEFAULT (datetime('now', '+8 hour')),
+    level TEXT DEFAULT 'info',
+    type TEXT DEFAULT 'request',
+    message TEXT DEFAULT '',
     method TEXT,
     path TEXT,
     model TEXT,
@@ -78,7 +81,8 @@ db.exec(`
     status INTEGER,
     local_token_id INTEGER DEFAULT NULL,
     upstream_token_id INTEGER DEFAULT NULL,
-    duration_ms INTEGER DEFAULT NULL
+    duration_ms INTEGER DEFAULT NULL,
+    extra TEXT DEFAULT NULL
   )
 `);
 
@@ -158,7 +162,7 @@ const stmtUpdateLocalUsage = db.prepare(
 
 // ---- logs ----
 const stmtInsertLog = db.prepare(
-  `INSERT INTO logs (method, path, model, resolved_model, api, stream, status, local_token_id, upstream_token_id, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  `INSERT INTO logs (level, type, message, method, path, model, resolved_model, api, stream, status, local_token_id, upstream_token_id, duration_ms, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 const stmtGetLogsRecent = db.prepare(`SELECT * FROM logs ORDER BY id DESC LIMIT ?`);
 const stmtGetLogsSince = db.prepare(`SELECT * FROM logs WHERE id > ? ORDER BY id ASC LIMIT 100`);
@@ -432,10 +436,14 @@ function updateLocalTokenUsage(id, inputTokens, outputTokens) {
 
 /**
  * 写入请求日志
+ * 支持新格式（level/type/message/extra）和旧格式（仅 method/path 等）
  */
 function addLog(params) {
-  const { method, path, model, resolvedModel, api, stream, status, localTokenId, upstreamTokenId, durationMs } = params;
-  stmtInsertLog.run(method, path, model, resolvedModel, api, stream ? 1 : 0, status, localTokenId || null, upstreamTokenId || null, durationMs || null);
+  const { level, type, message, method, path, model, resolvedModel, api, stream, status, localTokenId, upstreamTokenId, durationMs, extra } = params;
+  const finalLevel = level || (status >= 400 ? 'error' : 'info');
+  const finalType = type || 'request';
+  const finalExtra = extra ? JSON.stringify(extra) : null;
+  stmtInsertLog.run(finalLevel, finalType, message || '', method, path, model, resolvedModel, api, stream ? 1 : 0, status, localTokenId || null, upstreamTokenId || null, durationMs || null, finalExtra);
   stmtDeleteOldLogs.run();
 }
 
