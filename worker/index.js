@@ -245,14 +245,6 @@ async function handleCreateUpstreamToken(request, env, ctx) {
   const { token, name, weight, upstream_url, max_failures, priority, check_interval_minutes, enabled } = body;
   if (!token || !name) return jsonResponse({ error: { message: 'token 和 name 为必填项' } }, 400);
   const record = await createUpstreamToken(env.DB, { token, name, weight: parseInt(weight, 10) || 1, upstream_url: upstream_url || null, max_failures: parseInt(max_failures, 10) || 3, priority: parseInt(priority, 10) || 5, check_interval_minutes: parseInt(check_interval_minutes, 10) || 5, enabled: enabled !== undefined ? ((enabled === true || enabled === 1 || enabled === "1") ? 1 : 0) : 1 });
-  // 直接写入日志进行测试
-  try {
-    await env.DB.prepare(
-      'INSERT INTO logs (level, type, message, method, path) VALUES (?, ?, ?, ?, ?)'
-    ).bind('info', 'db', `创建上游 Token: ${name}`, 'POST', '/api/upstream-tokens').run();
-  } catch (e) {
-    console.error('Direct log write error:', e.message);
-  }
   await logInfo(env.DB, ctx, 'db', `创建上游 Token: ${name}`, { tokenId: record?.id, weight, upstream_url });
   return jsonResponse({ success: true, token: record ? { ...record, token: record.token.slice(0, 8) + '****' } : null });
 }
