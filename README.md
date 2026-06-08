@@ -302,6 +302,13 @@ Codex CLI / OpenAI SDK
 
 ## 更新日志
 
+### 2026-06-08 12:35 - 模型透传功能
+
+- **重要**: 修改 `resolveModel` 函数：未设置强制模型时透传用户请求的模型
+- 移除默认 `qwen3.7-plus` 的硬编码
+- 同步修改 Docker 和 Workers 版本
+- 清除 D1 中的强制模型设置
+
 ### 2026-06-08 12:15 - 强制使用 qwen3.7-plus 模型
 
 - **重要**: 修改 `resolveModel` 函数默认返回 `qwen3.7-plus`（OpenCode 不支持 GPT 模型）
