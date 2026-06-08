@@ -100,6 +100,23 @@ export async function ensureDbTables(db) {
         to_model TEXT NOT NULL
       )
     `);
+    // 模型元数据表：存储每个模型的上下文窗口、最大输出 Token 等参数
+    // 原因：用于代理请求时自动注入合理的 max_tokens 默认值，以及 UI 展示模型信息
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS model_meta (
+        model_id TEXT PRIMARY KEY,
+        vendor TEXT,
+        context_window INTEGER NOT NULL,
+        max_output_tokens INTEGER NOT NULL,
+        source TEXT,
+        supports_vision INTEGER DEFAULT 0,
+        supports_tools INTEGER DEFAULT 1,
+        pricing_input REAL DEFAULT 0,
+        pricing_output REAL DEFAULT 0,
+        api_format TEXT DEFAULT 'openai',
+        updated_at TEXT NOT NULL
+      )
+    `);
   } catch (e) {
     console.error('DB init error:', e.message);
   }

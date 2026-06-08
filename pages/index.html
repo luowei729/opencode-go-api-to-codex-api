@@ -158,6 +158,7 @@
   <!-- Tab 栏 -->
   <div class="tab-bar">
     <button class="tab-btn active" onclick="switchTab('models')">模型管理</button>
+    <button class="tab-btn" onclick="switchTab('modelmeta')">模型元数据</button>
     <button class="tab-btn" onclick="switchTab('upstream')">上游 Token 池</button>
     <button class="tab-btn" onclick="switchTab('local')">本地 Token</button>
     <button class="tab-btn" onclick="switchTab('stats')">使用统计</button>
@@ -185,7 +186,42 @@
     </div>
   </div>
 
-  <!-- ==================== Tab 2: 上游 Token 池 ==================== -->
+  <!-- ==================== Tab 2: 模型元数据 ==================== -->
+  <div class="tab-panel" id="tab-modelmeta">
+    <div class="info-box">
+      管理每个模型的上下文窗口大小、最大输出 Token 等元数据参数。<br>
+      代理请求时会根据模型元数据自动设置合理的 <code>max_tokens</code> 默认值。<br>
+      点击"从上游同步"可自动获取上游模型列表并填充默认参数。
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="section-title" style="margin-bottom:0">模型元数据列表</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-small" onclick="syncModelMeta()">从上游同步</button>
+        <button class="btn btn-primary btn-small" onclick="showAddModelMeta()">+ 添加模型</button>
+      </div>
+    </div>
+
+    <table class="data-table" id="modelMetaTable">
+      <thead>
+        <tr>
+          <th>模型 ID</th>
+          <th>厂商</th>
+          <th>上下文窗口</th>
+          <th>最大输出</th>
+          <th>来源</th>
+          <th>API 格式</th>
+          <th>更新时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="modelMetaBody">
+        <tr><td colspan="8" style="text-align:center;color:#484f58;padding:20px">加载中...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ==================== Tab 3: 上游 Token 池 ==================== -->
   <div class="tab-panel" id="tab-upstream">
     <div class="info-box">
       配置多个上游 OpenCode Go API Token，代理会按 <code>usage/weight</code> 比值自动负载均衡。<br>
@@ -341,6 +377,42 @@
   </div>
 </div>
 
+<!-- 模型元数据编辑模态框 -->
+<div class="modal-overlay" id="modelMetaModal" style="display:none">
+  <div class="modal">
+    <h3 id="modelMetaModalTitle">添加模型元数据</h3>
+    <label>模型 ID *</label>
+    <input type="text" id="metaModelId" placeholder="如：gpt-4o、claude-3-opus" />
+    <label>厂商</label>
+    <input type="text" id="metaVendor" placeholder="如：OpenAI、Anthropic" />
+    <label>上下文窗口 (tokens) *</label>
+    <input type="number" id="metaContextWindow" value="128000" min="1024" />
+    <label>最大输出 Token *</label>
+    <input type="number" id="metaMaxOutput" value="4096" min="256" />
+    <label>来源</label>
+    <input type="text" id="metaSource" placeholder="如：upstream、manual" />
+    <label>API 格式</label>
+    <select id="metaApiFormat">
+      <option value="openai">OpenAI</option>
+      <option value="anthropic">Anthropic</option>
+    </select>
+    <label>支持视觉</label>
+    <select id="metaSupportsVision">
+      <option value="0">否</option>
+      <option value="1">是</option>
+    </select>
+    <label>支持工具调用</label>
+    <select id="metaSupportsTools">
+      <option value="1">是</option>
+      <option value="0">否</option>
+    </select>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="hideModelMetaModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveModelMeta()">保存</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -353,6 +425,8 @@ var availableModels = [];
 // 缓存已加载的 Token 列表数据，避免编辑时重复拉取全部 Token
 var cachedUpstreamTokens = [];
 var cachedLocalTokens = [];
+// 缓存模型元数据列表
+var cachedModelMeta = [];
 var ANTHROPIC_MODELS = ['minimax-m3', 'minimax-m2.7', 'minimax-m2.5', 'qwen3.7-max', 'qwen3.7-plus'];
 var lastLogId = 0;
 var logsTimer = null;
@@ -428,11 +502,12 @@ function switchTab(name) {
   });
   document.getElementById('tab-' + name).classList.add('active');
   // 激活对应按钮
-  var tabs = ['models', 'upstream', 'local', 'stats'];
+  var tabs = ['models', 'modelmeta', 'upstream', 'local', 'stats'];
   var idx = tabs.indexOf(name);
   if (idx >= 0) document.querySelectorAll('.tab-btn')[idx].classList.add('active');
 
   // 切换时刷新对应数据
+  if (name === 'modelmeta') loadModelMeta();
   if (name === 'upstream') loadUpstreamTokens();
   if (name === 'local') loadLocalTokens();
   if (name === 'stats') { loadStatsOverview(); fetchLogs(); }
@@ -443,6 +518,7 @@ function switchTab(name) {
 // ============================
 function initApp() {
   loadModels();
+  loadModelMeta();
   loadUpstreamTokens();
   loadLocalTokens();
   loadStatsOverview();
@@ -540,6 +616,160 @@ function clearModel() {
       showToast(data.message);
     }
   }).catch(function(err) { showToast('取消失败: ' + err.message, true); });
+}
+
+// ============================
+// 模型元数据
+// ============================
+function loadModelMeta() {
+  fetch('/api/model-meta', { headers: getAdminHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      cachedModelMeta = data.models || [];
+      renderModelMetaTable(cachedModelMeta);
+    })
+    .catch(function(err) {
+      document.getElementById('modelMetaBody').innerHTML = '<tr><td colspan="8" style="text-align:center;color:#f85149">加载失败: ' + escapeHtml(err.message) + '</td></tr>';
+    });
+}
+
+function renderModelMetaTable(models) {
+  var tbody = document.getElementById('modelMetaBody');
+  if (models.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#484f58;padding:20px">暂无模型元数据，请点击"从上游同步"或"添加模型"</td></tr>';
+    return;
+  }
+  tbody.innerHTML = '';
+  models.forEach(function(m) {
+    var tr = document.createElement('tr');
+    var apiBadge = m.api_format === 'anthropic'
+      ? '<span class="badge badge-warn">Anthropic</span>'
+      : '<span class="badge badge-ok">OpenAI</span>';
+    var updatedAt = m.updated_at ? formatTime(m.updated_at) : '-';
+    tr.innerHTML =
+      '<td style="font-weight:600;font-family:monospace">' + escapeHtml(m.model_id) + '</td>' +
+      '<td>' + escapeHtml(m.vendor || '-') + '</td>' +
+      '<td>' + formatNumber(m.context_window) + '</td>' +
+      '<td>' + formatNumber(m.max_output_tokens) + '</td>' +
+      '<td><span class="badge badge-info">' + escapeHtml(m.source || 'manual') + '</span></td>' +
+      '<td>' + apiBadge + '</td>' +
+      '<td style="font-size:12px;color:#8b949e">' + updatedAt + '</td>' +
+      '<td>' +
+        '<button class="btn btn-secondary btn-small" onclick="editModelMeta(\'' + escapeHtml(m.model_id) + '\')">编辑</button> ' +
+        '<button class="btn btn-danger btn-small" onclick="deleteModelMeta(\'' + escapeHtml(m.model_id) + '\')">删除</button>' +
+      '</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function showAddModelMeta() {
+  document.getElementById('modelMetaModalTitle').textContent = '添加模型元数据';
+  document.getElementById('metaModelId').value = '';
+  document.getElementById('metaModelId').disabled = false;
+  document.getElementById('metaVendor').value = '';
+  document.getElementById('metaContextWindow').value = '128000';
+  document.getElementById('metaMaxOutput').value = '4096';
+  document.getElementById('metaSource').value = 'manual';
+  document.getElementById('metaApiFormat').value = 'openai';
+  document.getElementById('metaSupportsVision').value = '0';
+  document.getElementById('metaSupportsTools').value = '1';
+  document.getElementById('modelMetaModal').style.display = '';
+}
+
+function editModelMeta(modelId) {
+  var m = cachedModelMeta.find(function(x) { return x.model_id === modelId; });
+  if (!m) {
+    // 缓存中没有，重新加载
+    fetch('/api/model-meta', { headers: getAdminHeaders() })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        cachedModelMeta = data.models || [];
+        var found = cachedModelMeta.find(function(x) { return x.model_id === modelId; });
+        if (found) fillModelMetaForm(found);
+        else showToast('模型不存在', true);
+      });
+    return;
+  }
+  fillModelMetaForm(m);
+}
+
+function fillModelMetaForm(m) {
+  document.getElementById('modelMetaModalTitle').textContent = '编辑模型元数据: ' + m.model_id;
+  document.getElementById('metaModelId').value = m.model_id;
+  document.getElementById('metaModelId').disabled = true;
+  document.getElementById('metaVendor').value = m.vendor || '';
+  document.getElementById('metaContextWindow').value = m.context_window || 128000;
+  document.getElementById('metaMaxOutput').value = m.max_output_tokens || 4096;
+  document.getElementById('metaSource').value = m.source || 'manual';
+  document.getElementById('metaApiFormat').value = m.api_format || 'openai';
+  document.getElementById('metaSupportsVision').value = m.supports_vision ? '1' : '0';
+  document.getElementById('metaSupportsTools').value = m.supports_tools ? '1' : '0';
+  document.getElementById('modelMetaModal').style.display = '';
+}
+
+function hideModelMetaModal() {
+  document.getElementById('modelMetaModal').style.display = 'none';
+}
+
+function saveModelMeta() {
+  var modelId = document.getElementById('metaModelId').value.trim();
+  if (!modelId) { showToast('模型 ID 为必填项', true); return; }
+
+  var body = {
+    modelId: modelId,
+    vendor: document.getElementById('metaVendor').value.trim(),
+    contextWindow: parseInt(document.getElementById('metaContextWindow').value, 10) || 128000,
+    maxOutputTokens: parseInt(document.getElementById('metaMaxOutput').value, 10) || 4096,
+    source: document.getElementById('metaSource').value.trim() || 'manual',
+    apiFormat: document.getElementById('metaApiFormat').value,
+    supportsVision: document.getElementById('metaSupportsVision').value === '1',
+    supportsTools: document.getElementById('metaSupportsTools').value === '1'
+  };
+
+  fetch('/api/model-meta', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders()),
+    body: JSON.stringify(body)
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.success) {
+      hideModelMetaModal();
+      showToast('已保存');
+      loadModelMeta();
+    } else {
+      showToast(data.error?.message || '保存失败', true);
+    }
+  }).catch(function(err) { showToast('保存失败: ' + err.message, true); });
+}
+
+function deleteModelMeta(modelId) {
+  if (!confirm('确定删除模型 ' + modelId + ' 的元数据？')) return;
+  fetch('/api/model-meta', {
+    method: 'DELETE',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders()),
+    body: JSON.stringify({ modelId: modelId })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.success) {
+      showToast('已删除');
+      loadModelMeta();
+    } else {
+      showToast(data.error?.message || '删除失败', true);
+    }
+  }).catch(function(err) { showToast('删除失败: ' + err.message, true); });
+}
+
+function syncModelMeta() {
+  showToast('正在从上游同步...');
+  fetch('/api/model-meta/sync', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, getAdminHeaders())
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.success) {
+      showToast('同步完成，新增 ' + (data.added || 0) + ' 个模型');
+      loadModelMeta();
+    } else {
+      showToast(data.error?.message || '同步失败', true);
+    }
+  }).catch(function(err) { showToast('同步失败: ' + err.message, true); });
 }
 
 // ============================

@@ -73,6 +73,10 @@ let runtimeMaxOutputTokens = null;
 let tokenLimitsLoaded = false;
 let dbInitialized = false;
 
+// 模型元数据缓存（model_id -> {context_window, max_output_tokens, ...}）
+const runtimeModelMeta = {};
+let modelMetaLoaded = false;
+
 // ============================
 // D1 初始化
 // ============================
@@ -81,6 +85,34 @@ async function ensureDb(env) {
   if (dbInitialized || !env.DB) return;
   await ensureDbTables(env.DB);
   dbInitialized = true;
+}
+
+// 从 D1 加载模型元数据到运行时缓存
+async function loadModelMetaFromDb(env) {
+  if (modelMetaLoaded) return;
+  if (!env.DB) return;
+  try {
+    await ensureDb(env);
+    const result = await env.DB.prepare('SELECT * FROM model_meta').all();
+    // 清空缓存并重新加载
+    Object.keys(runtimeModelMeta).forEach(key => delete runtimeModelMeta[key]);
+    for (const row of (result.results || [])) {
+      runtimeModelMeta[row.model_id] = {
+        vendor: row.vendor,
+        context_window: row.context_window,
+        max_output_tokens: row.max_output_tokens,
+        supports_vision: row.supports_vision,
+        supports_tools: row.supports_tools,
+        pricing_input: row.pricing_input,
+        pricing_output: row.pricing_output,
+        api_format: row.api_format
+      };
+    }
+    modelMetaLoaded = true;
+    console.log(`[ModelMeta] Loaded ${Object.keys(runtimeModelMeta).length} models`);
+  } catch (e) {
+    console.error('[ModelMeta] Load error:', e.message);
+  }
 }
 
 async function loadModelMapFromDb(env) {
@@ -177,18 +209,93 @@ async function handleHealth() {
   return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() });
 }
 
-async function handleModels(authHeader, env) {
+/**
+ * 处理 /v1/models 请求
+ * 合并上游模型列表和 D1 中的元数据，返回完整的模型信息
+ */
+async function handleModels(request, env, ctx) {
   try {
-    // 使用动态上游地址而非硬编码，优先从 D1 设置读取
+    // 使用动态上游地址，优先从 D1 设置读取
     const upstream = getUpstreamUrl(env);
     // 认证 Token：优先使用请求头的 Bearer Token，否则回退到环境变量
+    const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '') || env.OPENCODE_TOKEN || '';
-    const response = await fetch(`${upstream}/v1/models`, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
-    const data = await response.json();
-    return jsonResponse(data);
+    
+    // 获取上游模型列表
+    const response = await fetch(`${upstream}/v1/models`, { 
+      headers: { 
+        'Authorization': `Bearer ${token}`, 
+        'Content-Type': 'application/json' 
+      } 
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Upstream returned ${response.status}`);
+    }
+    
+    const upstreamData = await response.json();
+    const upstreamModels = upstreamData.data || [];
+    
+    // 从 D1 获取元数据
+    let metaData = {};
+    if (env.DB) {
+      try {
+        await ensureDb(env);
+        const rows = await env.DB.prepare('SELECT * FROM model_meta').all();
+        rows.results?.forEach(row => {
+          metaData[row.model_id] = {
+            vendor: row.vendor,
+            context_window: row.context_window,
+            max_output_tokens: row.max_output_tokens,
+            source: row.source,
+            supports_vision: row.supports_vision,
+            supports_tools: row.supports_tools,
+            pricing_input: row.pricing_input,
+            pricing_output: row.pricing_output,
+            api_format: row.api_format,
+            updated_at: row.updated_at
+          };
+        });
+      } catch (e) {
+        console.error('Load model meta error:', e.message);
+      }
+    }
+    
+    // 合并上游模型和元数据
+    const mergedModels = upstreamModels.map(m => {
+      const meta = metaData[m.id] || {};
+      return {
+        id: m.id,
+        object: m.object || 'model',
+        created: m.created || null,
+        owned_by: m.owned_by || '',
+        // 合并元数据
+        context_window: meta.context_window || null,
+        max_output_tokens: meta.max_output_tokens || null,
+        vendor: meta.vendor || null,
+        source: meta.source || null,
+        supports_vision: meta.supports_vision || 0,
+        supports_tools: meta.supports_tools || 1,
+        pricing_input: meta.pricing_input || 0,
+        pricing_output: meta.pricing_output || 0,
+        api_format: meta.api_format || 'openai',
+        last_updated: meta.updated_at || null
+      };
+    });
+    
+    return jsonResponse({
+      object: 'list',
+      data: mergedModels
+    });
+    
   } catch (err) {
     console.error('Error fetching models:', err.message);
-    return jsonResponse({ error: { message: 'Failed to fetch models from upstream' } }, 502);
+    return jsonResponse({ 
+      error: { 
+        message: `Failed to fetch models: ${err.message}`,
+        type: 'upstream_error'
+      } 
+    }, 502);
   }
 }
 
@@ -363,6 +470,9 @@ async function handleResponses(request, env, ctx) {
     if (!settingsLoaded) await loadSettingsFromDb(env);
     if (!defaultModelLoaded) await loadDefaultModelFromDb(env);
     if (!tokenLimitsLoaded) await loadTokenLimitsFromDb(env);
+    // 加载模型元数据缓存，用于获取每个模型的默认 max_output_tokens
+    // 原因：不同模型的最大输出 Token 限制不同，需要根据模型自动设置合理默认值
+    if (!modelMetaLoaded) await loadModelMetaFromDb(env);
 
     const upstreamBase = getUpstreamUrl(env);
     const clientToken = request.headers.get('authorization')?.replace('Bearer ', '');
@@ -378,13 +488,33 @@ async function handleResponses(request, env, ctx) {
     const resolvedModel = resolveModel(originalModel, env, runtimeDefaultModel, runtimeModelMap);
     const isStream = reqBody?.stream === true;
 
-    if (runtimeMaxOutputTokens && !reqBody.max_output_tokens) reqBody.max_output_tokens = runtimeMaxOutputTokens;
+    // 获取当前模型的默认 max_output_tokens
+    // 优先级：runtimeMaxOutputTokens（全局设置）> 模型元数据中的 max_output_tokens > 64000（硬编码默认）
+    const modelMeta = runtimeModelMeta[resolvedModel];
+    const defaultMaxTokens = modelMeta?.max_output_tokens || 64000;
+
+    // 自动注入 max_output_tokens（Responses API 格式）
+    // 原因：部分客户端可能不传 max_output_tokens，需要根据模型能力设置合理默认值
+    if (!reqBody.max_output_tokens) {
+      reqBody.max_output_tokens = runtimeMaxOutputTokens || defaultMaxTokens;
+    }
+    // 同时设置 max_tokens（Chat Completions 格式），兼容两种 API 格式
+    if (!reqBody.max_tokens) {
+      reqBody.max_tokens = runtimeMaxOutputTokens || defaultMaxTokens;
+    }
 
     const useAnthropic = isAnthropicModel(resolvedModel);
     let upstreamBody, upstreamPath;
 
     if (useAnthropic) { upstreamBody = convertRequestToAnthropic(reqBody, resolvedModel); upstreamPath = '/v1/messages'; }
     else { upstreamBody = convertRequestToChatCompletions(reqBody, resolvedModel); upstreamPath = '/v1/chat/completions'; }
+
+    // 流式请求时添加 stream_options 以获取 Token 用量统计
+    // 原因：OpenAI 流式响应默认不包含 usage 字段，需要显式请求
+    // 注意：仅对 OpenAI 兼容模型有效，Anthropic 模型通过 message_delta 事件返回 usage
+    if (isStream && !useAnthropic && auth.localTokenId) {
+      upstreamBody.stream_options = { include_usage: true };
+    }
 
     const upstreamUrl = buildUpstreamUrl(auth.actualUpstreamUrl, upstreamPath);
     console.log(`[Responses] -> ${upstreamUrl} (model: ${originalModel} -> ${resolvedModel}, stream: ${isStream}, api: ${useAnthropic ? 'anthropic' : 'openai'}, token: #${auth.upstreamToken?.id || 'env'}, local: ${auth.mode === 'local' ? '#' + auth.localTokenId : 'passthrough'})`);
@@ -404,9 +534,38 @@ async function handleResponses(request, env, ctx) {
       const converter = useAnthropic ? createAnthropicStreamConverter(originalModel) : createChatStreamConverter(originalModel);
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
+      // 流式请求需要从 SSE 数据中提取 Token 用量
+      let streamUsage = null;
       const transformed = response.body.pipeThrough(new TransformStream({
-        transform(chunk, controller) { const text = decoder.decode(chunk, { stream: true }); const converted = converter.process(text); if (converted) controller.enqueue(encoder.encode(converted)); },
-        flush(controller) { const remaining = converter.flush(); if (remaining) controller.enqueue(encoder.encode(remaining)); },
+        transform(chunk, controller) {
+          const text = decoder.decode(chunk, { stream: true });
+          // 尝试从 SSE data 行中提取 usage 信息
+          const lines = text.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+              try {
+                const json = JSON.parse(line.slice(6));
+                if (json.usage) streamUsage = json.usage;
+              } catch {}
+            }
+          }
+          const converted = converter.process(text);
+          if (converted) controller.enqueue(encoder.encode(converted));
+        },
+        async flush(controller) {
+          const remaining = converter.flush();
+          if (remaining) controller.enqueue(encoder.encode(remaining));
+          // 流结束时异步更新 Token 用量统计
+          if (streamUsage && auth.localTokenId) {
+            try {
+              const inputTokens = streamUsage.prompt_tokens || streamUsage.input_tokens || 0;
+              const outputTokens = streamUsage.completion_tokens || streamUsage.output_tokens || 0;
+              if (inputTokens > 0 || outputTokens > 0) {
+                await updateLocalTokenUsage(env.DB, auth.localTokenId, inputTokens, outputTokens);
+              }
+            } catch (e) { console.error('Stream usage update error:', e.message); }
+          }
+        },
       }));
       await recordRequestStats(env.DB, ctx, auth.localTokenId, auth.upstreamToken?.id, originalModel, resolvedModel, useAnthropic ? 'anthropic' : 'openai', isStream, response.status, durationMs, '/v1/responses');
       return new Response(transformed, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no', ...corsHeaders() } });
@@ -446,6 +605,9 @@ async function handleChatCompletions(request, env, ctx) {
     if (!settingsLoaded) await loadSettingsFromDb(env);
     if (!defaultModelLoaded) await loadDefaultModelFromDb(env);
     if (!tokenLimitsLoaded) await loadTokenLimitsFromDb(env);
+    // 加载模型元数据缓存，用于获取每个模型的默认 max_output_tokens
+    // 原因：不同模型的最大输出 Token 限制不同，需要根据模型自动设置合理默认值
+    if (!modelMetaLoaded) await loadModelMetaFromDb(env);
 
     const upstreamBase = getUpstreamUrl(env);
     const clientToken = request.headers.get('authorization')?.replace('Bearer ', '');
@@ -461,13 +623,26 @@ async function handleChatCompletions(request, env, ctx) {
     const resolvedModel = resolveModel(originalModel, env, runtimeDefaultModel, runtimeModelMap);
     reqBody.model = resolvedModel;
 
-    if (runtimeMaxOutputTokens && !reqBody.max_tokens) reqBody.max_tokens = runtimeMaxOutputTokens;
+    // 获取当前模型的默认 max_output_tokens
+    // 优先级：runtimeMaxOutputTokens（全局设置）> 模型元数据中的 max_output_tokens > 64000（硬编码默认）
+    const modelMeta = runtimeModelMeta[resolvedModel];
+    const defaultMaxTokens = modelMeta?.max_output_tokens || 64000;
+
+    // 自动注入 max_tokens（Chat Completions 格式）
+    // 原因：部分客户端可能不传 max_tokens，需要根据模型能力设置合理默认值
+    if (!reqBody.max_tokens) {
+      reqBody.max_tokens = runtimeMaxOutputTokens || defaultMaxTokens;
+    }
+    // 同时设置 max_output_tokens（Responses API 格式），兼容两种 API 格式
+    if (!reqBody.max_output_tokens) {
+      reqBody.max_output_tokens = runtimeMaxOutputTokens || defaultMaxTokens;
+    }
 
     const useAnthropic = isAnthropicModel(resolvedModel);
     let upstreamBody, upstreamPath;
 
     if (useAnthropic) {
-      const pseudoResponsesBody = { model: resolvedModel, messages: reqBody.messages, stream: reqBody.stream || false, max_output_tokens: reqBody.max_tokens || 64000, temperature: reqBody.temperature, top_p: reqBody.top_p, stop: reqBody.stop, tools: reqBody.tools };
+      const pseudoResponsesBody = { model: resolvedModel, messages: reqBody.messages, stream: reqBody.stream || false, max_output_tokens: reqBody.max_tokens, temperature: reqBody.temperature, top_p: reqBody.top_p, stop: reqBody.stop, tools: reqBody.tools };
       upstreamBody = convertRequestToAnthropic(pseudoResponsesBody, resolvedModel);
       upstreamPath = '/v1/messages';
     } else {
@@ -479,6 +654,12 @@ async function handleChatCompletions(request, env, ctx) {
 
     const upstreamUrl = buildUpstreamUrl(auth.actualUpstreamUrl, upstreamPath);
     const isStream = reqBody?.stream === true;
+    
+    // 流式请求添加 stream_options 以获取 Token 用量统计
+    if (isStream && !useAnthropic && auth.localTokenId) {
+      upstreamBody.stream_options = { include_usage: true };
+    }
+    
     console.log(`[Chat] -> ${upstreamUrl} (model: ${originalModel} -> ${resolvedModel}, api: ${useAnthropic ? 'anthropic' : 'openai'}, token: #${auth.upstreamToken?.id || 'env'}, local: ${auth.mode === 'local' ? '#' + auth.localTokenId : 'passthrough'})`);
 
     const response = await makeUpstreamRequest(upstreamUrl, upstreamBody, auth.actualToken, useAnthropic);
@@ -497,15 +678,82 @@ async function handleChatCompletions(request, env, ctx) {
         const converter = createAnthropicToChatStreamConverter(resolvedModel);
         const encoder = new TextEncoder();
         const decoder = new TextDecoder();
+        // 流式请求需要从 SSE 数据中提取 Token 用量
+        // 原因：统计每个本地 Token 的累计输入/输出 Token 数
+        let usage = null;
         const transformed = response.body.pipeThrough(new TransformStream({
-          transform(chunk, controller) { const text = decoder.decode(chunk, { stream: true }); const converted = converter.process(text); if (converted) controller.enqueue(encoder.encode(converted)); },
-          flush(controller) { const remaining = converter.flush(); if (remaining) controller.enqueue(encoder.encode(remaining)); controller.enqueue(encoder.encode('data: [DONE]\n\n')); },
+          transform(chunk, controller) { 
+            const text = decoder.decode(chunk, { stream: true }); 
+            const converted = converter.process(text); 
+            if (converted) controller.enqueue(encoder.encode(converted));
+            // 尝试从 SSE data 行中提取 Anthropic usage 信息
+            // 原因：Anthropic 在 message_start 和 message_delta 事件中返回 usage
+            const lines = text.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                try {
+                  const json = JSON.parse(line.slice(6));
+                  if (json.type === 'message_delta' && json.usage) usage = json.usage;
+                  if (json.type === 'message_start' && json.message?.usage) usage = json.message.usage;
+                } catch {}
+              }
+            }
+          },
+          async flush(controller) { 
+            const remaining = converter.flush(); 
+            if (remaining) controller.enqueue(encoder.encode(remaining)); 
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            // 流结束时更新 Token 用量
+            // 原因：流式请求的 usage 在流结束时才能完整获取
+            if (usage && auth.localTokenId) {
+              const inputTokens = usage.prompt_tokens || usage.input_tokens || 0;
+              const outputTokens = usage.completion_tokens || usage.output_tokens || 0;
+              if (inputTokens > 0 || outputTokens > 0) {
+                await updateLocalTokenUsage(env.DB, auth.localTokenId, inputTokens, outputTokens);
+                addLog(env.DB, ctx, { level: 'info', type: 'usage', message: `流式请求 Token 用量: 输入 ${inputTokens}, 输出 ${outputTokens}`, localTokenId: auth.localTokenId });
+              }
+            }
+          },
         }));
         await recordRequestStats(env.DB, ctx, auth.localTokenId, auth.upstreamToken?.id, originalModel, resolvedModel, useAnthropic ? 'anthropic' : 'openai', isStream, response.status, durationMs, '/v1/chat/completions');
         return new Response(transformed, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no', ...corsHeaders() } });
       } else {
+        // OpenAI 格式的流式请求
+        const decoder = new TextDecoder();
+        // 流式请求需要从 SSE 数据中提取 Token 用量
+        // 原因：统计每个本地 Token 的累计输入/输出 Token 数
+        let usage = null;
+        const transformed = response.body.pipeThrough(new TransformStream({
+          async transform(chunk, controller) {
+            const text = decoder.decode(chunk, { stream: true });
+            controller.enqueue(chunk);
+            // 尝试从 SSE data 行中提取 OpenAI usage 信息
+            // 原因：OpenAI 流式响应在最后一个 chunk 中返回 usage（需请求时带 stream_options）
+            const lines = text.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                try {
+                  const json = JSON.parse(line.slice(6));
+                  if (json.usage) usage = json.usage;
+                } catch {}
+              }
+            }
+          },
+          async flush(controller) {
+            // 流结束时更新 Token 用量
+            // 原因：流式请求的 usage 在流结束时才能完整获取
+            if (usage && auth.localTokenId) {
+              const inputTokens = usage.prompt_tokens || usage.input_tokens || 0;
+              const outputTokens = usage.completion_tokens || usage.output_tokens || 0;
+              if (inputTokens > 0 || outputTokens > 0) {
+                await updateLocalTokenUsage(env.DB, auth.localTokenId, inputTokens, outputTokens);
+                addLog(env.DB, ctx, { level: 'info', type: 'usage', message: `流式请求 Token 用量: 输入 ${inputTokens}, 输出 ${outputTokens}`, localTokenId: auth.localTokenId });
+              }
+            }
+          },
+        }));
         await recordRequestStats(env.DB, ctx, auth.localTokenId, auth.upstreamToken?.id, originalModel, resolvedModel, useAnthropic ? 'anthropic' : 'openai', isStream, response.status, durationMs, '/v1/chat/completions');
-        return new Response(response.body, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no', ...corsHeaders() } });
+        return new Response(transformed, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no', ...corsHeaders() } });
       }
     } else {
       const data = await response.text();
@@ -544,7 +792,7 @@ export default {
 
     // ---- 公共路由 ----
     if (path === '/health' && request.method === 'GET') return handleHealth();
-    if (path === '/v1/models' && request.method === 'GET') return handleModels(request.headers.get('authorization'), env);
+    if (path === '/v1/models' && request.method === 'GET') return handleModels(request, env, ctx);
 
     // ---- 认证 ----
     if (path === '/api/auth' && request.method === 'POST') {
@@ -758,6 +1006,107 @@ export default {
         if (env.DB) { try { await ensureDb(env); if (runtimeMaxOutputTokens) await env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('max_output_tokens', String(runtimeMaxOutputTokens)).run(); else await env.DB.prepare('DELETE FROM settings WHERE key = ?').bind('max_output_tokens').run(); } catch (e) { console.error('Save max output tokens error:', e.message); } }
       }
       return jsonResponse({ success: true, message: 'Token 限制已更新', maxContextTokens: runtimeMaxContextTokens, maxOutputTokens: runtimeMaxOutputTokens });
+    }
+
+    // ---- 模型元数据管理 API ----
+    // GET: 获取所有模型元数据
+    if (path === '/api/model-meta' && request.method === 'GET') {
+      if (!env.DB) return jsonResponse({ models: [], error: 'DB not available' });
+      try {
+        await ensureDb(env);
+        const result = await env.DB.prepare('SELECT * FROM model_meta ORDER BY vendor, model_id').all();
+        return jsonResponse({ models: result.results || [] });
+      } catch (e) {
+        console.error('Get model-meta error:', e.message);
+        return jsonResponse({ error: { message: '获取模型元数据失败: ' + e.message } }, 500);
+      }
+    }
+    
+    // POST: 创建或更新模型元数据（upsert）
+    if (path === '/api/model-meta' && request.method === 'POST') {
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!env.DB) return jsonResponse({ error: { message: 'DB not available' } }, 500);
+      const body = await request.json();
+      const defaults = {
+        contextWindow: 250000,
+        maxOutputTokens: 64000,
+        supportsVision: 0,
+        supportsTools: 1,
+        pricingInput: 0,
+        pricingOutput: 0,
+        apiFormat: 'openai'
+      };
+      const { modelId, vendor, contextWindow, maxOutputTokens, source, supportsVision, supportsTools, pricingInput, pricingOutput, apiFormat } = body;
+      if (!modelId) return jsonResponse({ error: { message: 'modelId 必填' } }, 400);
+      try {
+        await ensureDb(env);
+        await env.DB.prepare(
+          'INSERT OR REPLACE INTO model_meta (model_id, vendor, context_window, max_output_tokens, source, supports_vision, supports_tools, pricing_input, pricing_output, api_format, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)'
+        ).bind(
+          modelId,
+          vendor || 'Unknown',
+          contextWindow ? parseInt(contextWindow, 10) : defaults.contextWindow,
+          maxOutputTokens ? parseInt(maxOutputTokens, 10) : defaults.maxOutputTokens,
+          source || '',
+          supportsVision !== undefined ? (supportsVision ? 1 : 0) : defaults.supportsVision,
+          supportsTools !== undefined ? (supportsTools ? 1 : 0) : defaults.supportsTools,
+          pricingInput ? parseFloat(pricingInput) : defaults.pricingInput,
+          pricingOutput ? parseFloat(pricingOutput) : defaults.pricingOutput,
+          apiFormat || defaults.apiFormat
+        ).run();
+        return jsonResponse({ success: true, message: `模型 ${modelId} 元数据已保存` });
+      } catch (e) {
+        console.error('Save model-meta error:', e.message);
+        return jsonResponse({ error: { message: '保存模型元数据失败: ' + e.message } }, 500);
+      }
+    }
+    
+    // DELETE: 删除模型元数据
+    if (path === '/api/model-meta' && request.method === 'DELETE') {
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!env.DB) return jsonResponse({ error: { message: 'DB not available' } }, 500);
+      const body = await request.json();
+      const { modelId } = body;
+      if (!modelId) return jsonResponse({ error: { message: 'modelId 必填' } }, 400);
+      try {
+        await ensureDb(env);
+        await env.DB.prepare('DELETE FROM model_meta WHERE model_id = ?').bind(modelId).run();
+        return jsonResponse({ success: true, message: `模型 ${modelId} 元数据已删除` });
+      } catch (e) {
+        console.error('Delete model-meta error:', e.message);
+        return jsonResponse({ error: { message: '删除失败: ' + e.message } }, 500);
+      }
+    }
+    
+    // POST: 重新同步上游模型列表到 model_meta（为缺失的模型创建默认值）
+    if (path === '/api/model-meta/sync' && request.method === 'POST') {
+      if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
+      if (!env.DB) return jsonResponse({ error: { message: 'DB not available' } }, 500);
+      try {
+        await ensureDb(env);
+        // 从上游获取最新模型列表
+        const upstream = getUpstreamUrl(env);
+        const response = await fetch(upstream + '/v1/models', { 
+          headers: { 'Content-Type': 'application/json' } 
+        });
+        const data = await response.json();
+        const upstreamModels = data.data || [];
+        // 为上游有新但 D1 中没有的模型创建默认元数据
+        let created = 0;
+        for (const m of upstreamModels) {
+          const existing = await env.DB.prepare('SELECT model_id FROM model_meta WHERE model_id = ?').bind(m.id).first();
+          if (!existing) {
+            await env.DB.prepare(
+              'INSERT INTO model_meta (model_id, vendor, context_window, max_output_tokens, source, supports_vision, supports_tools, pricing_input, pricing_output, api_format, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)'
+            ).bind(m.id, 'Unknown', 250000, 64000, 'Default (未配置)', 0, 1, 0, 0, 'openai').run();
+            created++;
+          }
+        }
+        return jsonResponse({ success: true, message: `同步完成，新增 ${created} 个模型元数据` });
+      } catch (e) {
+        console.error('Sync model-meta error:', e.message);
+        return jsonResponse({ error: { message: '同步失败: ' + e.message } }, 500);
+      }
     }
 
     // ---- 代理路由 ----

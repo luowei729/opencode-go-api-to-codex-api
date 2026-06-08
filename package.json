@@ -1,11 +1,9 @@
 {
   "name": "opencode-go-to-codex-api",
-  "version": "1.0.0",
-  "description": "API proxy that converts OpenCode Go API to Codex (OpenAI-compatible) API format. Supports Cloudflare Workers/Pages and Docker deployment.",
-  "main": "src/server.js",
+  "version": "1.1.0",
+  "description": "API proxy that converts OpenCode Go API to Codex (OpenAI-compatible) API format. Cloudflare Workers deployment.",
+  "main": "worker/index.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
     "test": "node --test",
     "cf:dev": "npx wrangler dev",
     "cf:deploy": "npx wrangler deploy"
@@ -18,13 +16,6 @@
     "cloudflare-workers"
   ],
   "license": "MIT",
-  "dependencies": {
-    "better-sqlite3": "^9.6.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "http-proxy-middleware": "^2.0.6"
-  },
   "devDependencies": {
     "wrangler": "^3.0.0"
   }

@@ -1,6 +1,6 @@
 # OpenCode Go API to Codex API Proxy
 
-将 OpenCode Go API 转换为 Codex (OpenAI 兼容) API 格式的代理服务。支持 **Cloudflare Workers** 和 **Docker** 双部署。
+将 OpenCode Go API 转换为 Codex (OpenAI 兼容) API 格式的代理服务。基于 **Cloudflare Workers** 无服务器部署。
 
 ## 功能特性
 
@@ -8,12 +8,13 @@
 - 支持 Responses API (`/v1/responses`) 和 Chat Completions API (`/v1/chat/completions`)
 - 支持流式响应 (SSE)
 - 自动识别 Anthropic / OpenAI 兼容模型并转换协议
+- **模型元数据管理**：管理每个模型的上下文窗口、最大输出 Token 等参数，代理请求时自动设置合理的默认值
 - **上游 Token 池负载均衡**：配置多个上游 API Token，按权重自动分配请求
 - **本地访问 Token 管理**：生成多个本地 Token，客户端使用本地 Token 调用代理
 - **实时使用统计**：每个本地 Token 的请求数、成功/失败、Token 用量实时统计
 - **自动健康检查**：上游 Token 失败超阈值自动禁用，定时探测自动恢复
-- Web UI 管理面板（模型管理 + Token 池 + 本地 Token + 统计）
-- Cloudflare Workers 无服务器部署 / Docker 容器化部署
+- Web UI 管理面板（模型管理 + 模型元数据 + Token 池 + 本地 Token + 统计）
+- Cloudflare Workers 无服务器部署
 
 ## 支持的模型
 
@@ -42,7 +43,7 @@
 
 ---
 
-### 方式一：Cloudflare Workers（推荐）
+### Cloudflare Workers 部署
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/luowei729/opencode-go-api-to-codex-api)
 
@@ -83,46 +84,7 @@ cp .dev.vars.example .dev.vars   # 编辑填入配置
 npm run cf:dev                    # 启动本地开发服务器
 ```
 
----
-
-### 方式二：Docker Compose
-
-```bash
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 填入 OPENCODE_TOKEN、WEB_PASSWORD 等
-
-# 构建并启动
-docker-compose up -d
-
-# 查看日志
-docker-compose logs -f
-
-# 停止
-docker-compose down
-```
-
-**环境变量说明**（`.env`）：
-
-| 变量名 | 必填 | 说明 |
-|---|---|---|
-| `PORT` | 否 | 监听端口，默认 `30001` |
-| `UPSTREAM_BASE_URL` | 否 | 上游地址，默认 `https://opencode.ai/zen/go` |
-| `OPENCODE_TOKEN` | 否 | 服务端 Token（设置后客户端无需传 Token） |
-| `DEFAULT_MODEL` | 否 | 强制所有请求使用的模型 |
-| `MODEL_MAP` | 否 | 模型映射，格式 `from1:to1,from2:to2` |
-| `WEB_PASSWORD` | **是** | Web UI 管理密码（保护上游 Token 池和本地 Token 管理接口） |
-
----
-
-### 方式三：直接运行
-
-```bash
-npm install
-cp .env.example .env   # 编辑配置（必须设置 WEB_PASSWORD）
-npm start               # 启动
-npm run dev             # 开发模式（自动重载）
-```
+> **注意**：Docker 版本已停止维护，请使用 Cloudflare Workers 部署。
 
 ## 使用方法
 
@@ -132,10 +94,6 @@ npm run dev             # 开发模式（自动重载）
 # CF Workers 部署
 export OPENAI_BASE_URL=https://your-worker.workers.dev/v1
 export OPENAI_API_KEY=your_opencode_token   # 必须填写自己的 Token
-
-# Docker 部署（若服务端已配置 OPENCODE_TOKEN，API_KEY 可填任意值）
-export OPENAI_BASE_URL=http://localhost:30001/v1
-export OPENAI_API_KEY=your_opencode_token
 
 # 启动 codex
 codex
@@ -147,7 +105,7 @@ codex
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://your-worker.workers.dev/v1",  # 或 Docker: http://localhost:30001/v1
+    base_url="https://your-worker.workers.dev/v1",
     api_key="your_opencode_token"                    # CF Workers 必须填写自己的 Token
 )
 
@@ -206,6 +164,10 @@ curl https://your-worker.workers.dev/v1/responses \
 | `PUT /api/local-tokens/:id` | 更新本地 Token |
 | `DELETE /api/local-tokens/:id` | 删除本地 Token |
 | `GET /api/stats/overview` | 获取使用统计概览 |
+| `GET /api/model-meta` | 获取所有模型元数据 |
+| `POST /api/model-meta` | 创建/更新模型元数据 |
+| `DELETE /api/model-meta` | 删除模型元数据 |
+| `POST /api/model-meta/sync` | 从上游同步模型并填充默认值 |
 
 ## 上游 Token 池与负载均衡
 
@@ -236,16 +198,15 @@ curl https://your-worker.workers.dev/v1/responses \
 
 ## 认证方式
 
-| | CF Workers 部署 | Docker 部署 |
-|---|---|---|
-| **服务端 Token** | ✘ 不支持 | ✔ `.env` 中设置 `OPENCODE_TOKEN` |
-| **客户端 Token** | ✔ 必须通过 `Authorization` 头传递 | ✔ 服务端未配置时使用客户端 Token |
-| **本地 Token** | ✔ 通过 Web UI 生成，客户端使用 | ✔ 通过 Web UI 生成，客户端使用 |
-| **管理密码** | ✔ 默认 `abcd.1234`，可修改 | ✔ `.env` 中设置 `WEB_PASSWORD`（必须） |
+| 功能 | CF Workers 部署 |
+|---|---|
+| **服务端 Token** | ✘ 不支持（安全考虑） |
+| **客户端 Token** | ✔ 必须通过 `Authorization` 头传递 |
+| **本地 Token** | ✔ 通过 Web UI 生成，客户端使用 |
+| **管理密码** | ✔ 默认 `abcd.1234`，可通过 Web UI 修改 |
 
 - **CF Workers**：安全优先，不在服务端存储任何用户密钥，每个用户必须传自己的 Token
-- **Docker**：支持服务端统一配置 Token（适合团队内部使用），也支持客户端透传
-- **本地 Token**：两种部署都支持，通过 Web UI 生成，客户端使用本地 Token 调用代理
+- **本地 Token**：通过 Web UI 生成，客户端使用本地 Token 调用代理
 
 ## 项目结构
 
@@ -253,17 +214,9 @@ curl https://your-worker.workers.dev/v1/responses \
 ├── worker/                  # Cloudflare Workers
 │   ├── index.js            # Workers 入口 (fetch handler)
 │   └── proxy-logic.js      # 代理核心逻辑 (ESM)
-├── src/                     # Node.js / Docker
-│   ├── server.js           # Express 服务入口
-│   ├── proxy.js            # 代理核心逻辑 (CJS)
-│   ├── database.js         # SQLite 数据库操作封装
-│   └── index.html          # Web UI
 ├── pages/
-│   └── index.html          # Web UI (CF Workers 版本)
-├── data/                    # SQLite 数据库文件（Docker 版，gitignore）
+│   └── index.html          # Web UI
 ├── wrangler.toml           # CF Workers 配置
-├── Dockerfile              # Docker 镜像
-├── docker-compose.yml      # Docker Compose 编排
 └── .github/workflows/      # GitHub Actions 自动部署
 ```
 
@@ -301,6 +254,30 @@ Codex CLI / OpenAI SDK
 ```
 
 ## 更新日志
+
+### 2026-06-08 14:32 - 模型元数据管理与 Token 统计修复
+
+**新增功能：**
+- **模型元数据管理**：新增"模型元数据"Tab，支持管理每个模型的上下文窗口、最大输出 Token 等参数
+- **自动注入 max_tokens**：代理请求时根据模型元数据自动设置合理的 `max_tokens` 默认值
+- **从上游同步**：支持一键从上游同步模型列表并填充默认参数
+
+**Bug 修复：**
+- **CRITICAL**: 修复流式请求 Token 用量统计为 0 的问题
+  - Workers 版 `handleResponses()` 和 `handleChatCompletions()` 流式请求添加 `stream_options: { include_usage: true }`
+  - 改进 usage 提取逻辑，使用逐行解析 SSE data 替代不可靠的正则匹配
+  - 支持 Anthropic 格式（message_start/message_delta 事件）和 OpenAI 格式
+- **HIGH**: `ensureDbTables()` 补充 `model_meta` 建表 SQL，确保新部署时表结构正确
+
+**UI 改进：**
+- 新增"模型元数据"Tab，包含：
+  - 表格展示所有模型的元数据（model_id, vendor, context_window, max_output_tokens, source）
+  - 支持编辑每个模型的参数
+  - 支持新增/删除模型
+  - 支持同步按钮调用 `/api/model-meta/sync`
+
+**架构变更：**
+- Docker 版本已停止维护，后续仅保留 Cloudflare Workers 版本
 
 ### 2026-06-08 12:35 - 模型透传功能
 

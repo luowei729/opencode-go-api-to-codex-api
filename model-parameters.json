@@ -1,0 +1,211 @@
+{
+  "models": {
+    "deepseek-v4-pro": {
+      "vendor": "DeepSeek",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 384000,
+      "source": "官方定价页",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.435,
+      "pricingOutput": 2.19,
+      "apiFormat": "openai"
+    },
+    "deepseek-v4-flash": {
+      "vendor": "DeepSeek",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 384000,
+      "source": "官方定价页",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.14,
+      "pricingOutput": 0.28,
+      "apiFormat": "openai"
+    },
+    "glm-5.1": {
+      "vendor": "Zhipu AI",
+      "contextWindow": 200000,
+      "maxOutputTokens": 131072,
+      "source": "智谱官方文档",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.0,
+      "pricingOutput": 0.0,
+      "apiFormat": "openai"
+    },
+    "glm-5": {
+      "vendor": "Zhipu AI",
+      "contextWindow": 200000,
+      "maxOutputTokens": 131072,
+      "source": "智谱官方文档",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.0,
+      "pricingOutput": 0.0,
+      "apiFormat": "openai"
+    },
+    "kimi-k2.6": {
+      "vendor": "Moonshot AI",
+      "contextWindow": 262144,
+      "maxOutputTokens": 98304,
+      "source": "Kimi 平台 / 阿里云百炼",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.0,
+      "pricingOutput": 0.0,
+      "apiFormat": "openai"
+    },
+    "kimi-k2.5": {
+      "vendor": "Moonshot AI",
+      "contextWindow": 262144,
+      "maxOutputTokens": 65536,
+      "source": "估算值 (官方未公开)",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.0,
+      "pricingOutput": 0.0,
+      "apiFormat": "openai"
+    },
+    "qwen3.7-max": {
+      "vendor": "Alibaba Qwen",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "source": "阿里云百炼官方",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 2.5,
+      "pricingOutput": 7.5,
+      "apiFormat": "openai"
+    },
+    "qwen3.7-plus": {
+      "vendor": "Alibaba Qwen",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "source": "阿里云百炼官方",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.4,
+      "pricingOutput": 1.6,
+      "apiFormat": "openai"
+    },
+    "qwen3.6-plus": {
+      "vendor": "Alibaba Qwen",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "source": "阿里云百炼官方",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.0,
+      "pricingOutput": 0.0,
+      "apiFormat": "openai"
+    },
+    "qwen3.5-plus": {
+      "vendor": "Alibaba Qwen",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "source": "阿里云百炼官方",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.0,
+      "pricingOutput": 0.0,
+      "apiFormat": "openai"
+    },
+    "hy3-preview": {
+      "vendor": "ByteDance",
+      "contextWindow": 250000,
+      "maxOutputTokens": 64000,
+      "source": "估算 (官方未公开)",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.0,
+      "pricingOutput": 0.0,
+      "apiFormat": "openai"
+    },
+    "mimo-v2-pro": {
+      "vendor": "Xiaomi",
+      "contextWindow": 250000,
+      "maxOutputTokens": 64000,
+      "source": "估算 (官方未公开)",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.0,
+      "pricingOutput": 0.0,
+      "apiFormat": "openai"
+    },
+    "mimo-v2-omni": {
+      "vendor": "Xiaomi",
+      "contextWindow": 250000,
+      "maxOutputTokens": 64000,
+      "source": "估算 (官方未公开)",
+      "supportsVision": 1,
+      "supportsTools": 1,
+      "pricingInput": 0.0,
+      "pricingOutput": 0.0,
+      "apiFormat": "openai"
+    },
+    "mimo-v2.5-pro": {
+      "vendor": "Xiaomi",
+      "contextWindow": 250000,
+      "maxOutputTokens": 64000,
+      "source": "估算 (官方未公开)",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.0,
+      "pricingOutput": 0.0,
+      "apiFormat": "openai"
+    },
+    "mimo-v2.5": {
+      "vendor": "Xiaomi",
+      "contextWindow": 250000,
+      "maxOutputTokens": 64000,
+      "source": "估算 (官方未公开)",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.0,
+      "pricingOutput": 0.0,
+      "apiFormat": "openai"
+    },
+    "minimax-m3": {
+      "vendor": "MiniMax",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 524288,
+      "source": "MiniMax 官方文档",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.6,
+      "pricingOutput": 2.4,
+      "apiFormat": "openai"
+    },
+    "minimax-m2.7": {
+      "vendor": "MiniMax",
+      "contextWindow": 204800,
+      "maxOutputTokens": 204800,
+      "source": "MiniMax 官方文档",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.3,
+      "pricingOutput": 1.2,
+      "apiFormat": "openai"
+    },
+    "minimax-m2.5": {
+      "vendor": "MiniMax",
+      "contextWindow": 204800,
+      "maxOutputTokens": 204800,
+      "source": "MiniMax 官方文档",
+      "supportsVision": 0,
+      "supportsTools": 1,
+      "pricingInput": 0.3,
+      "pricingOutput": 1.2,
+      "apiFormat": "openai"
+    }
+  },
+  "defaults": {
+    "contextWindow": 250000,
+    "maxOutputTokens": 64000,
+    "pricingInput": 0.0,
+    "pricingOutput": 0.0,
+    "supportsVision": 0,
+    "supportsTools": 1,
+    "apiFormat": "openai"
+  }
+}
