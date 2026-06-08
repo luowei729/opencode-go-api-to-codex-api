@@ -42,6 +42,10 @@ import {
   recordLocalFail,
   updateLocalTokenUsage,
   addLog,
+  logInfo,
+  logWarn,
+  logError,
+  logDebug,
   getRecentLogs,
   getLogsSince,
   getTotalLogCount,
@@ -199,17 +203,19 @@ async function handleGetDefaultModel(env) {
   return jsonResponse({ runtimeDefault: runtimeDefaultModel, envDefault: env.DEFAULT_MODEL || null });
 }
 
-async function handleSetDefaultModel(request, env) {
+async function handleSetDefaultModel(request, env, ctx) {
   if (!defaultModelLoaded) await loadDefaultModelFromDb(env);
   const body = await request.json();
   const { model } = body;
   if (model === null || model === '' || model === undefined) {
     runtimeDefaultModel = null;
     if (env.DB) { try { await ensureDb(env); await env.DB.prepare('DELETE FROM settings WHERE key = ?').bind('default_model').run(); } catch (e) { console.error('Save default model error:', e.message); } }
+    await logInfo(env.DB, ctx, 'system', '取消强制模型设置', { model: null });
     return jsonResponse({ success: true, model: null, message: '已取消强制模型，使用客户端传入的模型' });
   }
   runtimeDefaultModel = model;
   if (env.DB) { try { await ensureDb(env); await env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('default_model', model).run(); } catch (e) { console.error('Save default model error:', e.message); } }
+  await logInfo(env.DB, ctx, 'system', `设置强制模型: ${model}`, { model });
   return jsonResponse({ success: true, model, message: `已强制使用模型: ${model}` });
 }
 
@@ -233,33 +239,37 @@ async function handleGetUpstreamTokens(env) {
   }
 }
 
-async function handleCreateUpstreamToken(request, env) {
+async function handleCreateUpstreamToken(request, env, ctx) {
   await ensureDb(env);
   const body = await request.json();
   const { token, name, weight, upstream_url, max_failures, priority, check_interval_minutes, enabled } = body;
   if (!token || !name) return jsonResponse({ error: { message: 'token 和 name 为必填项' } }, 400);
   const record = await createUpstreamToken(env.DB, { token, name, weight: parseInt(weight, 10) || 1, upstream_url: upstream_url || null, max_failures: parseInt(max_failures, 10) || 3, priority: parseInt(priority, 10) || 5, check_interval_minutes: parseInt(check_interval_minutes, 10) || 5, enabled: enabled !== undefined ? ((enabled === true || enabled === 1 || enabled === "1") ? 1 : 0) : 1 });
+  await logInfo(env.DB, ctx, 'db', `创建上游 Token: ${name}`, { tokenId: record?.id, weight, upstream_url });
   return jsonResponse({ success: true, token: record ? { ...record, token: record.token.slice(0, 8) + '****' } : null });
 }
 
-async function handleUpdateUpstreamToken(request, env, id) {
+async function handleUpdateUpstreamToken(request, env, ctx, id) {
   await ensureDb(env);
   const existing = await getUpstreamTokenById(env.DB, id);
   if (!existing) return jsonResponse({ error: { message: 'Token 不存在' } }, 404);
   const body = await request.json();
   const { token, name, weight, upstream_url, max_failures, priority, check_interval_minutes, enabled } = body;
   const updated = await updateUpstreamToken(env.DB, id, { token: token || existing.token, name: name || existing.name, weight: weight !== undefined ? parseInt(weight, 10) : existing.weight, upstream_url: upstream_url !== undefined ? upstream_url : existing.upstream_url, max_failures: max_failures !== undefined ? parseInt(max_failures, 10) : existing.max_failures, priority: priority !== undefined ? parseInt(priority, 10) : existing.priority, check_interval_minutes: check_interval_minutes !== undefined ? parseInt(check_interval_minutes, 10) : existing.check_interval_minutes, enabled: enabled !== undefined ? ((enabled === true || enabled === 1 || enabled === "1") ? 1 : 0) : existing.enabled });
+  await logInfo(env.DB, ctx, 'db', `更新上游 Token #${id}: ${name}`, { tokenId: id, changes: { weight, upstream_url, enabled } });
   return jsonResponse({ success: true, token: updated ? { ...updated, token: updated.token.slice(0, 8) + '****' } : null });
 }
 
-async function handleDeleteUpstreamToken(env, id) {
+async function handleDeleteUpstreamToken(env, ctx, id) {
   await ensureDb(env);
   await deleteUpstreamToken(env.DB, id);
+  await logInfo(env.DB, ctx, 'db', `删除上游 Token #${id}`, { tokenId: id });
   return jsonResponse({ success: true });
 }
 
-async function handleHealthCheck(env) {
+async function handleHealthCheck(env, ctx) {
   await ensureDb(env);
+  await logInfo(env.DB, ctx, 'system', '手动触发健康检查');
   await checkAndRecoverDisabledTokens(env.DB, getUpstreamUrl(env));
   return jsonResponse({ success: true, message: '健康检查已完成' });
 }
@@ -284,32 +294,36 @@ async function handleGetLocalTokens(env) {
   }
 }
 
-async function handleCreateLocalToken(request, env) {
+async function handleCreateLocalToken(request, env, ctx) {
   await ensureDb(env);
   const body = await request.json();
   const { name, token: customToken } = body;
   if (!name) return jsonResponse({ error: { message: 'name 为必填项' } }, 400);
   try {
     const record = await createLocalToken(env.DB, { name, token: customToken || null });
+    await logInfo(env.DB, ctx, 'db', `创建本地 Token: ${name}`, { tokenId: record?.id, name });
     return jsonResponse({ success: true, token: { ...record, _full_token: record.token } });
   } catch (err) {
+    await logError(env.DB, ctx, 'db', `创建本地 Token 失败: ${err.message}`, { name });
     return jsonResponse({ error: { message: '创建失败: ' + err.message } }, 500);
   }
 }
 
-async function handleUpdateLocalToken(request, env, id) {
+async function handleUpdateLocalToken(request, env, ctx, id) {
   await ensureDb(env);
   const existing = await getLocalTokenById(env.DB, id);
   if (!existing) return jsonResponse({ error: { message: 'Token 不存在' } }, 404);
   const body = await request.json();
   const { name, enabled } = body;
   const updated = await updateLocalToken(env.DB, id, { name: name || existing.name, enabled: enabled !== undefined ? ((enabled === true || enabled === 1 || enabled === "1") ? 1 : 0) : existing.enabled });
+  await logInfo(env.DB, ctx, 'db', `更新本地 Token #${id}: ${name}`, { tokenId: id, name, enabled });
   return jsonResponse({ success: true, token: updated });
 }
 
-async function handleDeleteLocalToken(env, id) {
+async function handleDeleteLocalToken(env, ctx, id) {
   await ensureDb(env);
   await deleteLocalToken(env.DB, id);
+  await logInfo(env.DB, ctx, 'db', `删除本地 Token #${id}`, { tokenId: id });
   return jsonResponse({ success: true });
 }
 
@@ -536,15 +550,23 @@ export default {
     if (path === '/api/auth' && request.method === 'POST') {
       const currentPassword = await getPasswordFromDb(env);
       const body = await request.json();
-      if (body.password === currentPassword) return jsonResponse({ success: true, message: '登录成功' });
+      if (body.password === currentPassword) {
+        await logInfo(env.DB, ctx, 'auth', '管理员登录成功');
+        return jsonResponse({ success: true, message: '登录成功' });
+      }
+      await logWarn(env.DB, ctx, 'auth', '管理员登录失败：密码错误');
       return jsonResponse({ error: { message: '密码错误' } }, 401);
     }
     if (path === '/api/auth/change' && request.method === 'POST') {
       const currentPassword = await getPasswordFromDb(env);
       const body = await request.json();
-      if (body.oldPassword !== currentPassword) return jsonResponse({ error: { message: '当前密码错误' } }, 401);
+      if (body.oldPassword !== currentPassword) {
+        await logWarn(env.DB, ctx, 'auth', '修改密码失败：当前密码错误');
+        return jsonResponse({ error: { message: '当前密码错误' } }, 401);
+      }
       if (!body.newPassword || body.newPassword.length < 4) return jsonResponse({ error: { message: '新密码至少 4 位' } }, 400);
       if (env.DB) { try { await ensureDb(env); await env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind('web_password', body.newPassword).run(); } catch (e) { console.error('Save password error:', e.message); } }
+      await logInfo(env.DB, ctx, 'auth', '管理员密码已修改');
       return jsonResponse({ success: true, message: '密码已修改' });
     }
 
@@ -555,22 +577,22 @@ export default {
     }
     if (path === '/api/upstream-tokens' && request.method === 'POST') {
       if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
-      return handleCreateUpstreamToken(request, env);
+      return handleCreateUpstreamToken(request, env, ctx);
     }
     if (path === '/api/upstream-tokens/health-check' && request.method === 'POST') {
       if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
-      return handleHealthCheck(env);
+      return handleHealthCheck(env, ctx);
     }
     const upstreamMatch = path.match(/^\/api\/upstream-tokens\/(\d+)$/);
     if (upstreamMatch) {
       const id = parseInt(upstreamMatch[1], 10);
       if (request.method === 'PUT') {
         if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
-        return handleUpdateUpstreamToken(request, env, id);
+        return handleUpdateUpstreamToken(request, env, ctx, id);
       }
       if (request.method === 'DELETE') {
         if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
-        return handleDeleteUpstreamToken(env, id);
+        return handleDeleteUpstreamToken(env, ctx, id);
       }
     }
 
@@ -581,18 +603,18 @@ export default {
     }
     if (path === '/api/local-tokens' && request.method === 'POST') {
       if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
-      return handleCreateLocalToken(request, env);
+      return handleCreateLocalToken(request, env, ctx);
     }
     const localMatch = path.match(/^\/api\/local-tokens\/(\d+)$/);
     if (localMatch) {
       const id = parseInt(localMatch[1], 10);
       if (request.method === 'PUT') {
         if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
-        return handleUpdateLocalToken(request, env, id);
+        return handleUpdateLocalToken(request, env, ctx, id);
       }
       if (request.method === 'DELETE') {
         if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
-        return handleDeleteLocalToken(env, id);
+        return handleDeleteLocalToken(env, ctx, id);
       }
     }
 
@@ -606,20 +628,67 @@ export default {
     if (path === '/api/default-model' && request.method === 'GET') return handleGetDefaultModel(env);
     if (path === '/api/default-model' && request.method === 'POST') {
       if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
-      return handleSetDefaultModel(request, env);
+      return handleSetDefaultModel(request, env, ctx);
     }
 
+    // ---- 增强版日志 API ----
     if (path === '/api/logs' && request.method === 'GET') {
       if (!env.DB) return jsonResponse({ logs: [], total: 0, error: 'DB binding not found' });
       try {
         await ensureDb(env);
+        // 支持多种查询参数
         const since = parseInt(url.searchParams.get('since') || '0', 10);
-        const total = await getTotalLogCount(env.DB);
-        const logs = since ? await getLogsSince(env.DB, since) : await getRecentLogs(env.DB, 50);
-        const mapped = logs.map(r => ({ id: r.id, time: r.time, method: r.method, path: r.path, model: r.model, resolvedModel: r.resolved_model, api: r.api, stream: !!r.stream, status: r.status }));
+        const limit = parseInt(url.searchParams.get('limit') || '100', 10);
+        const level = url.searchParams.get('level'); // info, warn, error, debug
+        const type = url.searchParams.get('type'); // request, auth, db, system, error
+        
+        // 构建查询条件
+        let whereClause = '';
+        const conditions = [];
+        if (since > 0) conditions.push(`id > ${since}`);
+        if (level) conditions.push(`level = '${level}'`);
+        if (type) conditions.push(`type = '${type}'`);
+        if (conditions.length > 0) whereClause = 'WHERE ' + conditions.join(' AND ');
+        
+        // 获取总数
+        const countResult = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM logs ${whereClause}`).first();
+        const total = countResult ? countResult.cnt : 0;
+        
+        // 获取日志
+        const query = since > 0 
+          ? `SELECT * FROM logs ${whereClause} ORDER BY id ASC LIMIT ?`
+          : `SELECT * FROM logs ${whereClause} ORDER BY id DESC LIMIT ?`;
+        const logsResult = await env.DB.prepare(query).bind(Math.min(limit, 500)).all();
+        const logs = logsResult.results || [];
+        
+        // 映射字段
+        const mapped = logs.map(r => ({
+          id: r.id,
+          time: r.time,
+          level: r.level || 'info',
+          type: r.type || 'request',
+          message: r.message || '',
+          method: r.method,
+          path: r.path,
+          model: r.model,
+          resolvedModel: r.resolved_model,
+          api: r.api,
+          stream: !!r.stream,
+          status: r.status,
+          localTokenId: r.local_token_id,
+          upstreamTokenId: r.upstream_token_id,
+          durationMs: r.duration_ms,
+          extra: r.extra ? JSON.parse(r.extra) : null,
+        }));
+        
+        // 非增量模式倒序
         if (!since) mapped.reverse();
-        return jsonResponse({ logs: mapped, total });
-      } catch (e) { console.error('Logs read error:', e.message); return jsonResponse({ logs: [], total: 0, error: e.message }); }
+        
+        return jsonResponse({ logs: mapped, total, limit, level, type });
+      } catch (e) { 
+        console.error('Logs read error:', e.message); 
+        return jsonResponse({ logs: [], total: 0, error: e.message }); 
+      }
     }
     if (path === '/api/logs' && request.method === 'DELETE') {
       if (!await checkAuth(request, env)) return jsonResponse({ error: { message: '未授权' } }, 401);
@@ -697,6 +766,13 @@ export default {
 
     if (path.startsWith('/v1/')) return jsonResponse({ error: { message: `Route ${request.method} ${path} not found` } }, 404);
 
+    // ---- 日志查看页面 ----
+    if (path === '/logs' || path === '/logs.html') {
+      return new Response(getLogsPageHtml(), { 
+        headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders() } 
+      });
+    }
+
     // ---- 静态页面 ----
     if (path === '/' || path === '/index.html' || path === '/favicon.ico') {
       if (path === '/favicon.ico') return new Response(null, { status: 204 });
@@ -706,3 +782,300 @@ export default {
     return jsonResponse({ error: { message: `Route ${request.method} ${path} not found` } }, 404);
   },
 };
+
+/**
+ * 生成日志查看页面 HTML
+ * 原因：提供独立的日志查看页面，方便排查问题
+ */
+function getLogsPageHtml() {
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>系统日志 - OpenCode Go API Proxy</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e1e4e8; min-height: 100vh; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 24px; margin-bottom: 8px; color: #fff; }
+  .subtitle { color: #8b949e; margin-bottom: 20px; font-size: 14px; }
+  
+  /* 筛选栏 */
+  .filter-bar { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px; margin-bottom: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .filter-bar label { color: #8b949e; font-size: 13px; }
+  .filter-bar select, .filter-bar input { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #e1e4e8; font-size: 13px; outline: none; }
+  .filter-bar select:focus, .filter-bar input:focus { border-color: #58a6ff; }
+  .filter-bar button { background: #238636; color: #fff; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .filter-bar button:hover { background: #2ea043; }
+  .filter-bar button.secondary { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
+  .filter-bar button.secondary:hover { color: #e1e4e8; border-color: #8b949e; }
+  .filter-bar button.danger { background: #da3633; }
+  .filter-bar button.danger:hover { background: #f85149; }
+  
+  /* 统计信息 */
+  .stats { display: flex; gap: 16px; margin-bottom: 16px; }
+  .stat-item { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 16px; }
+  .stat-label { color: #8b949e; font-size: 12px; }
+  .stat-value { color: #fff; font-size: 20px; font-weight: 600; }
+  
+  /* 日志表格 */
+  .logs-table { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 12px; overflow: hidden; }
+  .logs-table th { background: #21262d; padding: 10px 12px; text-align: left; font-size: 12px; color: #8b949e; font-weight: 600; border-bottom: 1px solid #30363d; position: sticky; top: 0; }
+  .logs-table td { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #1b1f23; vertical-align: top; }
+  .logs-table tr:last-child td { border-bottom: none; }
+  .logs-table tr:hover { background: #1c2129; }
+  
+  /* 日志级别标签 */
+  .level-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .level-info { background: #1f3a28; color: #3fb950; }
+  .level-warn { background: #3d2a1a; color: #d29922; }
+  .level-error { background: #3d1a1a; color: #f85149; }
+  .level-debug { background: #1a2a3d; color: #58a6ff; }
+  
+  /* 日志类型标签 */
+  .type-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 500; background: #21262d; color: #8b949e; }
+  
+  /* 状态码 */
+  .status-ok { color: #3fb950; font-weight: 600; }
+  .status-err { color: #f85149; font-weight: 600; }
+  
+  /* 时间 */
+  .time { color: #484f58; font-size: 12px; white-space: nowrap; }
+  
+  /* 消息 */
+  .message { color: #c9d1d9; max-width: 400px; word-break: break-all; }
+  
+  /* 额外数据 */
+  .extra-toggle { color: #58a6ff; cursor: pointer; font-size: 12px; }
+  .extra-data { display: none; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 8px; margin-top: 4px; font-family: monospace; font-size: 11px; color: #79c0ff; white-space: pre-wrap; word-break: break-all; max-width: 500px; }
+  .extra-data.show { display: block; }
+  
+  /* 空状态 */
+  .empty { text-align: center; padding: 40px; color: #484f58; }
+  
+  /* 自动刷新指示器 */
+  .auto-refresh { display: flex; align-items: center; gap: 8px; }
+  .auto-refresh input[type="checkbox"] { width: 16px; height: 16px; }
+  .refresh-indicator { width: 8px; height: 8px; border-radius: 50%; background: #3fb950; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📋 系统日志</h1>
+  <p class="subtitle">OpenCode Go API Proxy - 实时日志查看</p>
+  
+  <!-- 筛选栏 -->
+  <div class="filter-bar">
+    <label>级别:</label>
+    <select id="filterLevel">
+      <option value="">全部</option>
+      <option value="info">Info</option>
+      <option value="warn">Warn</option>
+      <option value="error">Error</option>
+      <option value="debug">Debug</option>
+    </select>
+    
+    <label>类型:</label>
+    <select id="filterType">
+      <option value="">全部</option>
+      <option value="request">Request</option>
+      <option value="auth">Auth</option>
+      <option value="db">Database</option>
+      <option value="system">System</option>
+      <option value="error">Error</option>
+    </select>
+    
+    <label>数量:</label>
+    <select id="filterLimit">
+      <option value="50">50</option>
+      <option value="100" selected>100</option>
+      <option value="200">200</option>
+      <option value="500">500</option>
+    </select>
+    
+    <button onclick="fetchLogs()">刷新</button>
+    <button class="secondary" onclick="clearLogs()">清空日志</button>
+    
+    <div class="auto-refresh">
+      <input type="checkbox" id="autoRefresh" checked>
+      <label for="autoRefresh">自动刷新</label>
+      <div class="refresh-indicator" id="refreshIndicator"></div>
+    </div>
+  </div>
+  
+  <!-- 统计信息 -->
+  <div class="stats">
+    <div class="stat-item">
+      <div class="stat-label">总日志数</div>
+      <div class="stat-value" id="totalCount">-</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">当前显示</div>
+      <div class="stat-value" id="showCount">-</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">错误数</div>
+      <div class="stat-value" id="errorCount" style="color:#f85149">-</div>
+    </div>
+  </div>
+  
+  <!-- 日志表格 -->
+  <table class="logs-table">
+    <thead>
+      <tr>
+        <th style="width:80px">ID</th>
+        <th style="width:160px">时间</th>
+        <th style="width:60px">级别</th>
+        <th style="width:70px">类型</th>
+        <th>消息</th>
+        <th style="width:60px">方法</th>
+        <th>路径</th>
+        <th style="width:120px">模型</th>
+        <th style="width:60px">状态</th>
+        <th style="width:70px">耗时</th>
+      </tr>
+    </thead>
+    <tbody id="logsBody">
+      <tr><td colspan="10" class="empty">加载中...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+let refreshTimer = null;
+let lastLogId = 0;
+
+// 获取日志
+async function fetchLogs() {
+  const level = document.getElementById('filterLevel').value;
+  const type = document.getElementById('filterType').value;
+  const limit = document.getElementById('filterLimit').value;
+  
+  let url = '/api/logs?limit=' + limit;
+  if (level) url += '&level=' + level;
+  if (type) url += '&type=' + type;
+  
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json();
+    
+    if (data.error) {
+      document.getElementById('logsBody').innerHTML = '<tr><td colspan="10" class="empty">错误: ' + escapeHtml(data.error) + '</td></tr>';
+      return;
+    }
+    
+    renderLogs(data.logs || []);
+    document.getElementById('totalCount').textContent = data.total || 0;
+    document.getElementById('showCount').textContent = (data.logs || []).length;
+    
+    // 统计错误数
+    const errorCount = (data.logs || []).filter(l => l.level === 'error').length;
+    document.getElementById('errorCount').textContent = errorCount;
+  } catch (e) {
+    document.getElementById('logsBody').innerHTML = '<tr><td colspan="10" class="empty">加载失败: ' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+// 渲染日志
+function renderLogs(logs) {
+  const tbody = document.getElementById('logsBody');
+  if (logs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="empty">暂无日志</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = '';
+  logs.forEach(log => {
+    const tr = document.createElement('tr');
+    const statusClass = log.status >= 400 ? 'status-err' : 'status-ok';
+    const levelClass = 'level-' + (log.level || 'info');
+    
+    tr.innerHTML = 
+      '<td>' + log.id + '</td>' +
+      '<td class="time">' + formatTime(log.time) + '</td>' +
+      '<td><span class="level-badge ' + levelClass + '">' + (log.level || 'info').toUpperCase() + '</span></td>' +
+      '<td><span class="type-badge">' + (log.type || 'request') + '</span></td>' +
+      '<td class="message">' + escapeHtml(log.message || '-') + '</td>' +
+      '<td>' + (log.method || '-') + '</td>' +
+      '<td>' + escapeHtml(log.path || '-') + '</td>' +
+      '<td>' + escapeHtml(log.model || '-') + (log.resolvedModel && log.resolvedModel !== log.model ? ' → ' + log.resolvedModel : '') + '</td>' +
+      '<td class="' + statusClass + '">' + (log.status || '-') + '</td>' +
+      '<td>' + (log.durationMs ? log.durationMs + 'ms' : '-') + '</td>';
+    
+    // 如果有额外数据，添加展开按钮
+    if (log.extra) {
+      const extraTd = tr.querySelector('.message');
+      const extraDiv = document.createElement('div');
+      extraDiv.className = 'extra-data';
+      extraDiv.textContent = JSON.stringify(log.extra, null, 2);
+      
+      const toggle = document.createElement('span');
+      toggle.className = 'extra-toggle';
+      toggle.textContent = ' [详情]';
+      toggle.onclick = () => extraDiv.classList.toggle('show');
+      
+      extraTd.appendChild(toggle);
+      extraTd.appendChild(extraDiv);
+    }
+    
+    tbody.appendChild(tr);
+  });
+}
+
+// 清空日志
+async function clearLogs() {
+  if (!confirm('确定清空所有日志？此操作不可恢复。')) return;
+  
+  try {
+    const resp = await fetch('/api/logs', { method: 'DELETE' });
+    const data = await resp.json();
+    if (data.success) {
+      alert('日志已清空');
+      fetchLogs();
+    } else {
+      alert('清空失败: ' + (data.error || '未知错误'));
+    }
+  } catch (e) {
+    alert('清空失败: ' + e.message);
+  }
+}
+
+// 格式化时间
+function formatTime(iso) {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  return d.toLocaleString('zh-CN', { hour12: false });
+}
+
+// HTML 转义
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// 自动刷新
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(fetchLogs, 3000);
+  document.getElementById('refreshIndicator').style.display = 'block';
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  document.getElementById('refreshIndicator').style.display = 'none';
+}
+
+document.getElementById('autoRefresh').addEventListener('change', (e) => {
+  if (e.target.checked) startAutoRefresh();
+  else stopAutoRefresh();
+});
+
+// 初始化
+fetchLogs();
+startAutoRefresh();
+</script>
+</body>
+</html>`;
+}

@@ -254,22 +254,70 @@ export async function updateLocalTokenUsage(db, id, inputTokens, outputTokens) {
 
 // ---- 日志 D1 操作 ----
 
+/**
+ * 通用日志记录函数
+ * 原因：统一日志格式，方便后期排查问题
+ * @param {Object} db - D1 数据库实例
+ * @param {Object} ctx - Workers 执行上下文
+ * @param {Object} entry - 日志条目
+ * @param {string} entry.level - 日志级别: info, warn, error, debug
+ * @param {string} entry.type - 日志类型: request, auth, db, system, error
+ * @param {string} entry.message - 日志消息
+ * @param {string} [entry.method] - HTTP 方法（仅 request 类型）
+ * @param {string} [entry.path] - 请求路径（仅 request 类型）
+ * @param {string} [entry.model] - 模型名称（仅 request 类型）
+ * @param {string} [entry.resolvedModel] - 解析后的模型（仅 request 类型）
+ * @param {string} [entry.api] - API 类型（仅 request 类型）
+ * @param {boolean} [entry.stream] - 是否流式（仅 request 类型）
+ * @param {number} [entry.status] - HTTP 状态码（仅 request 类型）
+ * @param {number} [entry.localTokenId] - 本地 Token ID
+ * @param {number} [entry.upstreamTokenId] - 上游 Token ID
+ * @param {number} [entry.durationMs] - 耗时毫秒
+ * @param {Object} [entry.extra] - 额外数据（JSON 对象）
+ */
 export async function addLog(db, ctx, entry) {
   if (!db) return;
   ctx.waitUntil((async () => {
     try {
+      // 如果是旧格式（没有 level/type），自动补充
+      const level = entry.level || (entry.status >= 400 ? 'error' : 'info');
+      const type = entry.type || 'request';
+      const extra = entry.extra ? JSON.stringify(entry.extra) : null;
+      
       await db.prepare(
-        'INSERT INTO logs (method, path, model, resolved_model, api, stream, status, local_token_id, upstream_token_id, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO logs (level, type, message, method, path, model, resolved_model, api, stream, status, local_token_id, upstream_token_id, duration_ms, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(
+        level, type, entry.message || '',
         entry.method, entry.path, entry.model, entry.resolvedModel,
         entry.api, entry.stream ? 1 : 0, entry.status,
-        entry.localTokenId || null, entry.upstreamTokenId || null, entry.durationMs || null
+        entry.localTokenId || null, entry.upstreamTokenId || null, entry.durationMs || null,
+        extra
       ).run();
-      await db.exec('DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT 200)');
+      // 保留最近 500 条日志
+      await db.exec('DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT 500)');
     } catch (e) {
       console.error('DB write error:', e.message);
     }
   })());
+}
+
+/**
+ * 快捷日志记录函数
+ */
+export async function logInfo(db, ctx, type, message, extra = null) {
+  return addLog(db, ctx, { level: 'info', type, message, extra });
+}
+
+export async function logWarn(db, ctx, type, message, extra = null) {
+  return addLog(db, ctx, { level: 'warn', type, message, extra });
+}
+
+export async function logError(db, ctx, type, message, extra = null) {
+  return addLog(db, ctx, { level: 'error', type, message, extra });
+}
+
+export async function logDebug(db, ctx, type, message, extra = null) {
+  return addLog(db, ctx, { level: 'debug', type, message, extra });
 }
 
 export async function getRecentLogs(db, limit = 50) {
