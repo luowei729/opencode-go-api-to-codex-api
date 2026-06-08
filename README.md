@@ -279,6 +279,16 @@ Codex CLI / OpenAI SDK
 **架构变更：**
 - Docker 版本已停止维护，后续仅保留 Cloudflare Workers 版本
 
+### 2026-06-08 15:05 - 统一系统时间为北京时间
+
+**时间统一：**
+- **数据库时间**：D1 数据库所有时间字段从 UTC 改为北京时间（UTC+8）
+  - `ensureDbTables()` 中建表语句的 `datetime('now')` → `datetime('now', '+8 hour')`
+  - 所有 UPDATE 语句中的时间函数统一改为北京时间
+  - `model_meta` 表的 `CURRENT_TIMESTAMP` → `datetime('now', '+8 hour')`
+- **API 响应时间**：`/health` 接口返回北京时间格式
+- **UI 时间显示**：`formatTime()` 函数适配北京时间字符串格式，直接显示无需转换
+
 ### 2026-06-08 12:35 - 模型透传功能
 
 - **重要**: 修改 `resolveModel` 函数：未设置强制模型时透传用户请求的模型

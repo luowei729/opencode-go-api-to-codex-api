@@ -1135,8 +1135,19 @@ function showToast(msg, isError) {
 
 function formatTime(iso) {
   if (!iso) return '-';
-  var d = new Date(iso);
-  return d.toLocaleString('zh-CN', { hour12: false });
+  // 数据库存储的是北京时间字符串格式 "YYYY-MM-DD HH:MM:SS"
+  // 直接返回即可，无需转换
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(iso)) {
+    return iso;
+  }
+  // 兼容 ISO 格式（如 health API 返回的带时区格式）
+  try {
+    var d = new Date(iso);
+    // 转换为北京时间显示
+    return d.toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' });
+  } catch (e) {
+    return iso;
+  }
 }
 
 function formatNumber(n) {

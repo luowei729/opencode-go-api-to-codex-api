@@ -51,8 +51,8 @@ export async function ensureDbTables(db) {
         priority INTEGER NOT NULL DEFAULT 5,
         usage_count INTEGER NOT NULL DEFAULT 0,
         check_interval_minutes INTEGER NOT NULL DEFAULT 5,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hour')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hour'))
       )
     `);
     await db.exec(`
@@ -68,14 +68,14 @@ export async function ensureDbTables(db) {
         total_output_tokens INTEGER NOT NULL DEFAULT 0,
         first_used_at TEXT DEFAULT NULL,
         last_used_at TEXT DEFAULT NULL,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hour')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hour'))
       )
     `);
     await db.exec(`
       CREATE TABLE IF NOT EXISTS logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        time TEXT NOT NULL DEFAULT (datetime('now')),
+        time TEXT NOT NULL DEFAULT (datetime('now', '+8 hour')),
         method TEXT,
         path TEXT,
         model TEXT,
@@ -154,7 +154,7 @@ export async function updateUpstreamToken(db, id, params) {
   if (!db) return null;
   const { token, name, weight, upstream_url, max_failures, priority, check_interval_minutes, enabled } = params;
   await db.prepare(
-    `UPDATE upstream_tokens SET token=?, name=?, weight=?, upstream_url=?, max_failures=?, priority=?, check_interval_minutes=?, enabled=?, updated_at=datetime('now') WHERE id=?`
+    `UPDATE upstream_tokens SET token=?, name=?, weight=?, upstream_url=?, max_failures=?, priority=?, check_interval_minutes=?, enabled=?, updated_at=datetime('now', '+8 hour') WHERE id=?`
   ).bind(token, name, weight, upstream_url, max_failures, priority, check_interval_minutes, enabled, id).run();
   return await getUpstreamTokenById(db, id);
 }
@@ -166,17 +166,17 @@ export async function deleteUpstreamToken(db, id) {
 
 export async function disableUpstreamToken(db, id) {
   if (!db) return;
-  await db.prepare(`UPDATE upstream_tokens SET enabled=0, disabled_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).bind(id).run();
+  await db.prepare(`UPDATE upstream_tokens SET enabled=0, disabled_at=datetime('now', '+8 hour'), updated_at=datetime('now', '+8 hour') WHERE id=?`).bind(id).run();
 }
 
 export async function enableUpstreamToken(db, id) {
   if (!db) return;
-  await db.prepare(`UPDATE upstream_tokens SET enabled=1, disabled_at=NULL, fail_count=0, updated_at=datetime('now') WHERE id=?`).bind(id).run();
+  await db.prepare(`UPDATE upstream_tokens SET enabled=1, disabled_at=NULL, fail_count=0, updated_at=datetime('now', '+8 hour') WHERE id=?`).bind(id).run();
 }
 
 export async function incrementUpstreamFail(db, id) {
   if (!db) return null;
-  await db.prepare(`UPDATE upstream_tokens SET fail_count=fail_count+1, updated_at=datetime('now') WHERE id=?`).bind(id).run();
+  await db.prepare(`UPDATE upstream_tokens SET fail_count=fail_count+1, updated_at=datetime('now', '+8 hour') WHERE id=?`).bind(id).run();
   const after = await getUpstreamTokenById(db, id);
   if (after && after.fail_count >= after.max_failures && after.enabled) {
     await disableUpstreamToken(db, id);
@@ -187,18 +187,18 @@ export async function incrementUpstreamFail(db, id) {
 
 export async function resetUpstreamFail(db, id) {
   if (!db) return;
-  await db.prepare(`UPDATE upstream_tokens SET fail_count=0, updated_at=datetime('now') WHERE id=?`).bind(id).run();
+  await db.prepare(`UPDATE upstream_tokens SET fail_count=0, updated_at=datetime('now', '+8 hour') WHERE id=?`).bind(id).run();
 }
 
 export async function incrementUpstreamUsage(db, id) {
   if (!db) return;
-  await db.prepare(`UPDATE upstream_tokens SET usage_count=usage_count+1, updated_at=datetime('now') WHERE id=?`).bind(id).run();
+  await db.prepare(`UPDATE upstream_tokens SET usage_count=usage_count+1, updated_at=datetime('now', '+8 hour') WHERE id=?`).bind(id).run();
 }
 
 export async function getExpiredDisabledTokens(db) {
   if (!db) return [];
   const result = await db.prepare(
-    `SELECT * FROM upstream_tokens WHERE enabled=0 AND disabled_at IS NOT NULL AND datetime(disabled_at, '+' || check_interval_minutes || ' minutes') <= datetime('now') ORDER BY priority ASC, disabled_at ASC LIMIT 3`
+    `SELECT * FROM upstream_tokens WHERE enabled=0 AND disabled_at IS NOT NULL AND datetime(disabled_at, '+' || check_interval_minutes || ' minutes') <= datetime('now', '+8 hour') ORDER BY priority ASC, disabled_at ASC LIMIT 3`
   ).all();
   return result.results || [];
 }
@@ -240,7 +240,7 @@ export async function createLocalToken(db, params) {
 export async function updateLocalToken(db, id, params) {
   if (!db) return null;
   const { name, enabled } = params;
-  await db.prepare(`UPDATE local_tokens SET name=?, enabled=?, updated_at=datetime('now') WHERE id=?`).bind(name, enabled, id).run();
+  await db.prepare(`UPDATE local_tokens SET name=?, enabled=?, updated_at=datetime('now', '+8 hour') WHERE id=?`).bind(name, enabled, id).run();
   return await getLocalTokenById(db, id);
 }
 
@@ -254,19 +254,19 @@ export async function recordLocalSuccess(db, id) {
   const token = await getLocalTokenById(db, id);
   if (!token) return;
   if (!token.first_used_at) {
-    await db.prepare(`UPDATE local_tokens SET first_used_at=datetime('now') WHERE id=?`).bind(id).run();
+    await db.prepare(`UPDATE local_tokens SET first_used_at=datetime('now', '+8 hour') WHERE id=?`).bind(id).run();
   }
-  await db.prepare(`UPDATE local_tokens SET success_count=success_count+1, total_requests=total_requests+1, last_used_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).bind(id).run();
+  await db.prepare(`UPDATE local_tokens SET success_count=success_count+1, total_requests=total_requests+1, last_used_at=datetime('now', '+8 hour'), updated_at=datetime('now', '+8 hour') WHERE id=?`).bind(id).run();
 }
 
 export async function recordLocalFail(db, id) {
   if (!db) return;
-  await db.prepare(`UPDATE local_tokens SET fail_count=fail_count+1, total_requests=total_requests+1, last_used_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).bind(id).run();
+  await db.prepare(`UPDATE local_tokens SET fail_count=fail_count+1, total_requests=total_requests+1, last_used_at=datetime('now', '+8 hour'), updated_at=datetime('now', '+8 hour') WHERE id=?`).bind(id).run();
 }
 
 export async function updateLocalTokenUsage(db, id, inputTokens, outputTokens) {
   if (!db) return;
-  await db.prepare(`UPDATE local_tokens SET total_input_tokens=total_input_tokens+?, total_output_tokens=total_output_tokens+?, updated_at=datetime('now') WHERE id=?`).bind(inputTokens, outputTokens, id).run();
+  await db.prepare(`UPDATE local_tokens SET total_input_tokens=total_input_tokens+?, total_output_tokens=total_output_tokens+?, updated_at=datetime('now', '+8 hour') WHERE id=?`).bind(inputTokens, outputTokens, id).run();
 }
 
 // ---- 日志 D1 操作 ----

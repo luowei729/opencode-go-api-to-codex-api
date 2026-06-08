@@ -206,7 +206,11 @@ function jsonResponse(data, status = 200) {
 // ============================
 
 async function handleHealth() {
-  return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() });
+  // 返回北京时间（UTC+8）
+  const now = new Date();
+  const bjTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const timestamp = bjTime.toISOString().replace('Z', '+08:00');
+  return jsonResponse({ status: 'ok', timestamp });
 }
 
 /**
@@ -1053,7 +1057,7 @@ export default {
         const parsedApiFormat = apiFormat || defaults.apiFormat;
         
         await env.DB.prepare(
-          'INSERT OR REPLACE INTO model_meta (model_id, vendor, context_window, max_output_tokens, source, supports_vision, supports_tools, pricing_input, pricing_output, api_format, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)'
+          'INSERT OR REPLACE INTO model_meta (model_id, vendor, context_window, max_output_tokens, source, supports_vision, supports_tools, pricing_input, pricing_output, api_format, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+8 hour'))'
         ).bind(
           modelId,
           vendor || 'Unknown',
@@ -1126,7 +1130,7 @@ export default {
           const existing = await env.DB.prepare('SELECT model_id FROM model_meta WHERE model_id = ?').bind(m.id).first();
           if (!existing) {
             await env.DB.prepare(
-              'INSERT INTO model_meta (model_id, vendor, context_window, max_output_tokens, source, supports_vision, supports_tools, pricing_input, pricing_output, api_format, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)'
+              'INSERT INTO model_meta (model_id, vendor, context_window, max_output_tokens, source, supports_vision, supports_tools, pricing_input, pricing_output, api_format, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+8 hour'))'
             ).bind(m.id, 'Unknown', 250000, 64000, 'Default (未配置)', 0, 1, 0, 0, 'openai').run();
             created++;
           }
